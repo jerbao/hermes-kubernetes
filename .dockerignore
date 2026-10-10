@@ -1,4 +1,4 @@
 # Use scripts/build_image.sh: it prepares a Git-selected context.
 # Building HERMES_HOME directly must not send state to Docker.
 *
-!Dockerfile
+!containers/hermes.Dockerfile

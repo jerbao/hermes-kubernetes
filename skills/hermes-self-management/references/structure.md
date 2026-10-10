@@ -1,136 +1,120 @@
-# Estrutura em uso
+# Runtime structure
 
-Consulte `python3 hermes.py runtime info`, a política da instância e
-lock de upstream da base pública para caminhos e versões atuais. Valores concretos da
-infraestrutura pertencem aos manifestos; não os fixe em scripts genéricos nem
-trate documentação antiga de migração como descrição da produção atual.
+Use `python3 hermes.py runtime info`, instance policy and the public dependency's
+upstream lock for current paths and versions. Infrastructure values belong in
+private manifests, never in shared defaults.
 
-| Componente | Função e persistência |
+| Component | Responsibility and persistence |
 |---|---|
-| Terminal SSH | Shell, projetos, Docker e desktop; home/workspace persistente em storage persistente independente do sistema operacional |
-| Pod Hermes, namespace da instância | Imagem AlmaLinux x86-64-v2; estado ativo no PVC; quatro containers abaixo |
-| `gateway` | Canais, sessões e agente; único gateway pessoal de produção |
-| `dashboard` | API usada pelo Desktop, plugins, Connectors e navegador de arquivos por SSH |
-| `diagnostics` | Copia proveniência e logs selecionados para a área privada do terminal |
-| `operations` | Ponte privada iniciada pelo pod via SSH, com socket no terminal |
-| MCP geral (`api`) | Pod Alpine, pacotes stdio e PVC próprios; sem acesso geral ao workspace/estado Hermes |
-| MCP navegador (`browser`) | Pod Alpine separado, dependências, dados e transporte conforme a política |
-| Codegraph (`workspace`) | Pod AlmaLinux/glibc, índices próprios e mounts autorizados dos projetos compartilhados |
-| CLIProxyAPI | Namespace próprio `cli-proxy-api`, credenciais/PVC próprios; configurado pela instância |
-| Tailscale/rede | Integração do cluster ou tailnet dedicada; NetworkPolicies e listas de destinos nos manifestos |
+| SSH terminal | Shell, projects, Docker and desktop; durable home/workspace independent of the OS |
+| Hermes pod | AlmaLinux x86-64-v2 image; active state on a PVC |
+| `gateway` | Channels, sessions and agent; one active production gateway |
+| `dashboard` | Desktop API, plugins, Connectors and SSH directory browsing |
+| `diagnostics` | Selected logs and provenance copied to private terminal storage |
+| `operations` | Private bridge initiated from the pod over SSH, exposing a terminal socket |
+| MCP `api` | Optional Alpine executor with its own packages/PVC |
+| MCP `browser` | Optional separate Alpine executor with a configured browser backend |
+| MCP `workspace` | Optional AlmaLinux/glibc executor with indexes and authorized project mounts |
+| CLIProxyAPI | Independently administered proxy configured by the instance |
+| Network | Existing cluster connectivity or dedicated tailnet; explicit destination policies |
 
-O terminal substituiu a instância anterior; não volte a iniciar seu gateway. Recriar o
-sistema operacional não autoriza excluir home persistente ou PVCs. Persistência
-protege contra recriação; recuperação de exclusões exige backup.
+Recreating the OS does not authorize deleting persistent home storage or PVCs.
+Persistence survives recreation; backups recover deletions.
 
-## Caminhos e repositórios
+## Paths and repositories
 
-No terminal, `~/.hermes` é a raiz Git de repositório privado. `hermes-agent/` é
-checkout independente reconstruído do upstream fixado mais patches. A base
-pública fica em `.local/platform/<revision>/`, selecionada por `platform.lock.json`;
-essa dependência ficam runtime, scripts e patches compartilhados. `.local/`
-contém diagnósticos, ambientes de desenvolvimento e estado privado da
-sincronização. Cópias/projeções no terminal não substituem o estado ativo do pod.
+On the terminal, `~/.hermes` is the private Git root. `hermes-agent/` is an ignored,
+independent checkout reconstructed from pinned upstream plus patches. Shared code
+is cached in `.local/platform/<revision>/`, selected by `platform.lock.json`.
+`.local/` also contains private diagnostics, development environments and
+controller state. Terminal projections do not replace active pod state.
 
-Na ponte, `state` corresponde ao HERMES_HOME ativo, `source` ao núcleo da imagem
-e `integration` à distribuição. `info` informa os caminhos; na imagem atual
-são `/opt/data`, `/opt/hermes` e `/opt/hermes-personal`. Os últimos dois são
-somente leitura. O socket padrão no terminal fica em
-`~/.hermes/.local/runtime/control.sock`; `--socket` seleciona outro socket.
+Bridge scopes are `state` (active HERMES_HOME), `source` (core image code) and
+`integration` (distribution). `info` reports their roots; image defaults are
+`/opt/data`, `/opt/hermes` and `/opt/hermes-personal`. The latter two are read-only.
+The terminal socket defaults to `~/.hermes/.local/runtime/control.sock`;
+`--socket` selects another socket.
 
-| Repositório | Responsabilidade |
+| Repository | Responsibility |
 |---|---|
-| repositório privado | Política da instância, personalizações sanitizadas, locks e referência à release pública |
-| manifestos privados da instância | Deployment, PVCs, executores MCP, rede, Secrets selados e CronJobs de backup |
-| manifestos privados do proxy | Proxy pessoal e acesso por clientes autorizados |
-| manifestos privados do ArgoCD | Applications ArgoCD |
-| repositório privado de infraestrutura | Cluster, Proxmox, criação/recriação do terminal e mounts persistentes |
+| Public distribution | Shared package, focused patches, images and release protocol |
+| Private instance | Policy, sanitized customizations, lock and deployment overlay |
+| Private application manifests | PVCs, optional executors, networking, encrypted Secrets and backup jobs |
+| Private infrastructure | Cluster, terminal provisioning/recreation and persistent mounts |
 
-O terminal tem permissões do usuário e acesso à ponte, sem credencial
-administrativa do Kubernetes. Não copie kubeconfig ou credenciais Proxmox
-para o agente como atalho.
+The agent has user permissions and bridge access. Do not copy Kubernetes or
+Proxmox administrative credentials to the terminal as a shortcut.
 
-## Estado e perfis
+## State and profiles
 
-Prefira interface/ferramenta nativa. Pela ponte, `list`, `stat`, `get` e `put`
-operam no estado real. Para edição manual, baixe uma cópia privada, revise e
-envie com o hash anterior; `absent` é somente para criar arquivo novo:
+Prefer native tools and GUI/API operations. Bridge `list`, `stat`, `get` and `put`
+operate on actual state. Retrieve a private copy before manual editing and write
+using its previous hash; `absent` only creates a new file.
 
 ```sh
 python3 hermes.py runtime stat config.yaml --sha256
 python3 hermes.py runtime get config.yaml --output /tmp/config-pod.yaml
-python3 hermes.py runtime put config.yaml --input /tmp/config-pod.yaml --expected SHA256_ANTERIOR
+python3 hermes.py runtime put config.yaml --input /tmp/config-pod.yaml --expected PREVIOUS_SHA256
 ```
 
-No escopo `state`, `config.yaml` é do default; os demais perfis ficam em
-`profiles/PERFIL/`. Cada perfil mantém configuração, plugins e `.env` próprios.
-Não compartilhe `.env` por symlinks. Para CLI, use sempre
-`hermes --profile PERFIL ...` dentro de `runtime_client.py exec`.
+In `state`, `config.yaml` belongs to default; other profiles use
+`profiles/PROFILE/`. Every profile owns configuration, plugins and `.env`.
+Never share `.env` through symlinks. Explicitly select
+`hermes --profile PROFILE ...` inside `python3 hermes.py runtime exec`.
 
-SQLite/WAL/SHM não podem ser transferidos ou sobrescritos como arquivos comuns.
-Use `sqlite-backup` para copiar banco ativo. O navegador de arquivos da GUI
-usa SSH ao terminal; suas pastas não demonstram onde um plugin backend foi instalado.
-Host, usuário, chave e cwd precisam da política efetiva do perfil, não somente
-das variáveis do container.
+SQLite/WAL/SHM cannot be transferred or overwritten as ordinary files. Use
+`sqlite-backup` for live databases. GUI directory browsing uses terminal SSH;
+these folders do not show where backend plugins were installed. Host, user,
+key and cwd must follow effective profile policy.
 
 ## MCPs
 
-Configure pelo Connectors/API nativa do perfil. HTTP acessa o serviço remoto;
-stdio é encaminhado pelo hook `mcp.stdio_executor` aos executores isolados.
-Pacotes são preparados nesses executores, sem instalar dependências no Python
-do Hermes ou no terminal.
+Use the profile's native Connectors/API. HTTP connects remotely; the
+`mcp.stdio_executor` hook routes stdio to isolated executors. Packages are prepared
+there, outside Hermes Python and the terminal.
 
-Para um pacote novo, avalie suas necessidades e indique em `args` quando
-necessário: `--hermes-executor=api`, `--hermes-executor=workspace` ou
-`--hermes-executor=browser`. A bridge remove o flag antes de iniciar o MCP.
-A seleção automática usa identidades/pacotes do mapa e caminhos autorizados;
-não infere necessidades arbitrárias de um pacote desconhecido. `vm` exige
-alvo/chave MCP dedicados provisionados; não é fallback para a chave do terminal.
-Não suponha que esse alvo esteja habilitado.
+For an unknown package, assess requirements and specify an argument when needed:
+`--hermes-executor=api`, `--hermes-executor=workspace` or
+`--hermes-executor=browser`. The bridge removes this flag before launch.
+Automatic routing recognizes mapped packages and authorized paths; it cannot
+infer arbitrary dependencies. `vm` requires a separately provisioned MCP target
+and key; it never falls back to terminal credentials. Do not assume it is enabled.
 
 ```sh
 python3 hermes.py runtime exec --scope integration --timeout 3600 -- \
-  /opt/hermes/.venv/bin/python /opt/hermes-personal/mcp_update.py plan --all
+  /opt/hermes/.venv/bin/python /opt/hermes-personal/hermes_kubernetes/mcp/updates.py plan --all
 ```
 
-Após revisar o plano, use `apply NOME` para um MCP ou `apply --all` quando uma
-atualização geral foi solicitada. Falha de instalação/handshake conserva a
-geração anterior. HTTP é administrado pelo provedor. Detalhes de roteamento
-ficam em `docs/capabilities-interface.md`.
+Review the plan, then use `apply NAME` or a requested `apply --all`. Installation
+or handshake failure preserves the previous generation. HTTP versions are
+provider-managed. Routing details are in the shared capabilities documentation.
 
-## Git, atualizações e backups
+## Git, updates and backups
 
-O controlador no terminal reconcilia Git, estado nativo e baseline, preservando
-conflitos. Projeta fontes de skills/plugins, persona, configuração com
-referências privadas, origem/revisão e locks PM/MCP em `customizations/<perfil>/`.
-Em `main`, publica alterações admitidas após 120 segundos estáveis. Branches,
-conflitos e mudanças da versão da distribuição exigem PR e tratamento explícito.
-Veja `docs/versionamento.md`; editar a projeção não prova aplicação no pod.
+The controller reconciles Git, native state and baselines, preserving conflicts.
+It projects sanitized skills, plugin source, persona, configuration references,
+provenance and PM/MCP locks to `customizations/<profile>/`. On `main`, admitted
+changes publish after 120 stable seconds. Branches, conflicts and distribution
+changes require explicit review. Editing a projection does not prove application.
 
-Personalizações não exigem rebuild. Código da distribuição/núcleo passa por
-CI da base pública, release, PR privado, digest nos manifestos e ArgoCD. Releases são fixadas no lock e atualizadas
-pelo fluxo versionado; não use `git pull` do upstream nem `hermes update` no
-código somente leitura do pod para atualizar produção.
+Customizations do not require image builds. Shared/core changes pass public CI,
+release publication, private update PR, digest adoption and ArgoCD. Releases are
+locked; avoid upstream `git pull` and `hermes update` in the read-only pod.
 
-Skills oficiais com patches e skills da distribuição usam reconciliação com
-três versões: base anterior, fonte candidata e arquivos do perfil. A preparação
-da release registra o resultado em `skill-update.json`, incorpora personalizações
-compatíveis à PR e bloqueia publicação em caso de conflito, com alerta no GitHub.
-O runtime aplica um plano completo antes de iniciar; nenhum arquivo em conflito
-é escrito nas skills ativas. As bases e diagnósticos são privados em
-`state/versioning/managed-skills/`. Skills removidas pelo usuário permanecem
-removidas; skills retiradas do upstream são preservadas como pessoais.
+Official patched skills and distribution skills use three-way reconciliation:
+previous baseline, candidate source and profile files. Release review preserves
+compatible edits and blocks conflicts with GitHub alerts. Startup prepares the
+complete plan before writing managed skills. Private baselines live in
+`state/versioning/managed-skills/`. User deletions stay deleted; skills retired
+upstream are retained as personal skills.
 
-Arquivos iguais às fontes gerenciadas são reconstruídos da imagem, sem cópias
-redundantes em `customizations`. Edições de perfil continuam bidirecionais. O
-controlador aguarda a imagem com os hashes de fonte e distribuição correspondentes
-antes de aplicar uma projeção que dependa dessa atualização. Não tente contornar
-`waiting-for-runtime` instalando o núcleo ou skills no terminal.
+Files matching managed sources are reconstructed from images without redundant
+Git copies. Profile edits remain bidirectional. The controller waits for matching
+source/distribution hashes before applying dependent changes. Do not bypass
+`waiting-for-runtime` by installing core code or skills on the terminal.
 
-Git e imagens não guardam SQLite, histórico, credenciais ou dados pessoais.
-Referências privadas são resolvidas pelo cofre no PVC. Estado Hermes, workspace
-e dados dos executores têm backups próprios criptografados no Google Drive,
-com seleção nos manifestos. Não arquive todo o home/cache por padrão nem inicie
-backup completo por operação. Consulte `docs/backup-google-drive.md` e
-`docs/backup-workspace.md` quando houver pedido de backup/restauração; restaure
-em área vazia e coordene escritores antes de trocar o estado de produção.
+Git/images exclude databases, history, credentials and personal data. Private
+references resolve through the PVC vault. Hermes state, workspace and executor
+data have separate encrypted Drive backups selected by policy. Do not archive
+the entire home/cache or trigger a backup for every operation. Restore into an
+empty area and coordinate writers before replacing production state.

@@ -1,49 +1,50 @@
-# Patches locais do núcleo
+# Focused upstream patches
 
-O build baixa a revisão exata de `upstream.lock.json` e aplica os patches
-verificados pelo lock. Prefira skills, plugins e a integração própria para
-personalizações.
+Builds download the exact `upstream.lock.json` revision, apply patches in order
+and verify every SHA-256. Prefer native skills, plugins and the distribution
+package for changes that do not require editing Hermes core.
 
-As mudanças ficam separadas por responsabilidade, nesta ordem:
+| Patch | Responsibility | Verification |
+|---|---|---|
+| `0001-runtime-almalinux.patch` | Upstream Dockerfile: AlmaLinux x86-64-v2, libraries and PM dependencies | Image build and bootstrap |
+| `0002-ssh-terminal.patch` | SSH batching, synchronization and profile/home isolation | Selected native SSH/synchronization tests |
+| `0003-anthropic-usage.patch` | Auxiliary Anthropic token and cache accounting | Selected native Anthropic/MoA tests |
+| `0004-mcp-stdio-executor.patch` | External stdio hook and GUI catalog transport metadata | Native executor and catalog RPC tests |
+| `0005-managed-skills.patch` | Official self-management instructions for the separated runtime | Locked patch replay and instruction comparison |
 
-| Patch | Responsabilidade | Verificação |
-| --- | --- | --- |
-| `0001-runtime-almalinux.patch` | Base AlmaLinux x86-64-v2, bibliotecas e dependências PM do runtime | Build, bootstrap e validação funcional da imagem |
-| `0002-ssh-terminal.patch` | Comandos em lotes, sincronização e isolamento de home/perfis no terminal SSH | Seis testes nativos SSH e de sincronização |
-| `0003-anthropic-usage.patch` | Preservação dos buckets de tokens e cache Anthropic no adaptador auxiliar | Três testes nativos de Anthropic/MoA |
-| `0004-mcp-stdio-executor.patch` | Hook stdio para executores MCP externos e tipo de transporte do catálogo na API da interface | Testes nativos de probes, transporte e catálogo RPC |
-| `0005-managed-skills.patch` | Encaminhamento das skills oficiais para a autogerência do runtime separado, preservando instruções nativas | `python3 scripts/check_official_skill_patches.py` reconstrói os patches fixados e compara os arquivos; sem chamadas de modelo |
+`series.json` assigns upstream files and tests to each group. The exporter rejects
+unclassified changes and duplicate ownership. New fixes require an appropriate
+group rather than a catch-all patch. Groups without upstream differences produce
+no patch.
 
-`series.json` declara os arquivos e testes de cada grupo. O exportador recusa
-mudanças sem classificação e arquivos atribuídos a dois grupos. Assim, uma nova
-correção exige escolher ou criar um grupo, sem voltar a acumular tudo em
-`local.patch`. Grupos sem diferenças para a release base não produzem patch.
+Edit the ignored `hermes-agent/` checkout for core changes, run affected native
+tests, then export:
 
-Quando uma correção exigir alteração no núcleo, edite o checkout ignorado
-`hermes-agent/`, teste com o runner nativo e exporte com
-`python3 scripts/export_patch.py --source CAMINHO_DO_CHECKOUT`.
-Arquivos novos precisam de `git -C hermes-agent add CAMINHO` antes da exportação.
-O exportador compara o checkout com a revisão base e gera cada `.patch`
-separadamente. `--test CAMINHO` continua aceito para verificar que o teste já
-foi declarado no grupo correspondente. Revise os patches e o lock antes do commit.
-O lock registra a ordem, o SHA-256 e os testes de cada patch; sua lista global de
-testes é a união dessas listas e continua sendo usada pelo runner da CI.
-O build aplica os patches na ordem do lock e verifica seus hashes. O CI executa
-os testes indicados antes de publicar; a suíte completa segue sendo manual.
+```sh
+python3 -m hermes_kubernetes.source.patches --source PATH_TO_CHECKOUT
+```
 
-O patch `0005` altera somente instruções Markdown. Cópias personalizadas existentes
-em `customizations/<perfil>/skills/` recebem a mesma adaptação, pois podem prevalecer
-sobre as skills da imagem. Cada perfil recebe também `hermes-self-management`.
-As demais instruções e personalizações são preservadas. A atualização contínua
-dessas skills passou a usar a rotina genérica em `runtime/skill_updates.py`,
-integrada à preparação da release e ao bootstrap/captura do runtime. Não é mais
-necessário executar o publicador pontual a cada atualização.
+Stage new files using `git -C hermes-agent add PATH` before export. The exporter
+compares with the locked base and generates separate patches. `--test PATH`
+checks test ownership. Review patches and lock before committing. The lock records
+order, hashes and per-patch tests; the global native test list is their union.
 
-Para publicar estas instruções em cópias já instaladas, use
-`scripts/check_official_skill_patches.py --kubeconfig CAMINHO --publish --base-revision COMMIT_ANTERIOR`.
-O script reconstrói a fonte anterior e a nova, mescla alterações independentes com
-três versões e recusa conflitos ou resultados ambíguos antes de escrever.
-Personalizações mescladas voltam à projeção Git. A publicação usa compare-and-swap
-e verifica os hashes. Sem `--publish`, apenas confere.
-Ele não instala plugins, reinicia serviços ou chama modelos. Novas sessões carregam
-as instruções atualizadas; o fluxo de CI/imagem preserva o patch nas instalações futuras.
+`0001` modifies the **upstream** Dockerfile downloaded with Hermes. Our own
+`containers/hermes.Dockerfile` wraps that base and is edited directly.
+
+`0005` changes Markdown instructions. Reconciliation in
+`hermes_kubernetes/state/skills.py` preserves compatible profile edits during
+release preparation and runtime capture/bootstrap. Every profile also receives
+`hermes-self-management`. Conflicts block writes before changing active skills.
+
+For explicitly requested one-time publication to an existing installation:
+
+```sh
+python3 -m hermes_kubernetes.source.skill_patches \
+  --kubeconfig PATH --publish --base-revision PREVIOUS_COMMIT
+```
+
+This reconstructs old/new instructions, merges three versions, refuses ambiguous
+results and writes through compare-and-swap with hash verification. Merged edits
+return to Git. Without `--publish`, it only checks. It does not install plugins,
+restart services or call models. New sessions load updated instructions.

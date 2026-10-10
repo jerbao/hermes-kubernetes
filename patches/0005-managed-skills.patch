@@ -248,7 +248,7 @@ index 1d39a900..e843a39f 100644
 +and projected to `customizations/<profile>/skills/` in the deployment repository.
 +Distribution skills live in the public distribution's `skills/`, governed by
 +`project-files.json`. These are different from bundled upstream skills under
-+`hermes-agent/skills/`: changes to those require `scripts/export_patch.py` and
++`hermes-agent/skills/`: changes to those require `hermes_kubernetes/source/patches.py` and
 +`patches/series.json`, because the independent source checkout is not committed
 +into the deployment repository. Read `hermes-self-management` for the complete
 +source/build/publication workflow before using the in-repo instructions below.

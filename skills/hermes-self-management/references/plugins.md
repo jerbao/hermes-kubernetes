@@ -1,84 +1,62 @@
-# Plugins no perfil e no runtime corretos
+# Plugins in the correct profile and runtime
 
-Os exemplos partem de `~/.hermes` **no terminal terminal**. A ponte executa a CLI
-no container `operations`, com usuário do Hermes e estado do PVC.
-`--profile` seleciona o perfil antes de importar as rotinas; omiti-lo pode
-seguir a seleção persistida de outro perfil.
-
-## Instalar e conferir
-
-Use o identificador solicitado: nome do catálogo, URL Git ou `owner/repo`.
-Para uma revisão específica, `--ref` aceita SHA Git completo de 40 caracteres.
+Run from `~/.hermes` on the SSH terminal. The operations bridge executes the
+native CLI in the `operations` container with the Hermes user and active PVC.
+Always specify `--profile` before the command; otherwise another persisted
+profile selection may apply.
 
 ```sh
 python3 hermes.py runtime exec --timeout 3600 -- \
-  hermes --profile default plugins install IDENTIFICADOR --yes-deps --enable
-python3 hermes.py runtime exec -- \
-  hermes --profile default plugins list --user --json
+  hermes --profile default plugins install IDENTIFIER --yes-deps --enable
+python3 hermes.py runtime exec -- hermes --profile default plugins list --user --json
 ```
 
-`exec` não fornece stdin interativo. `--yes-deps` responde ao consentimento
-nativo para instalar as dependências incluídas no pedido; `--enable` pede
-ativação. Para instalar sem ativar, use `--no-enable`. `--no-deps` deixa o plugin
-desabilitado e sem dependências; não reporte esse modo como instalação funcional.
+Use a catalog name, Git URL or `owner/repo`. `--ref` accepts a full 40-character
+Git commit. `exec` has no interactive stdin. `--yes-deps` consents to installing
+the requested dependencies; `--enable` requests activation. `--no-enable` installs
+without activation. `--no-deps` leaves the plugin disabled and without its
+dependencies; do not report this as a functional installation.
 
-Plugins portáveis Agent Plugins v1 têm regras próprias de admissão e podem
-permanecer desabilitados. Use o nome/chave retornado, confira o registro e,
-quando necessário, ative explicitamente no mesmo perfil:
-
-```sh
-python3 hermes.py runtime exec -- hermes --profile default plugins enable NOME
-```
-
-Preserve o erro e explique recusas de admissão, permissões ou substituição de
-ferramentas. Não acrescente `--force`, `--allow-removed` ou
-`--allow-tool-override` para contorná-las silenciosamente. Não declare sucesso
-quando apenas o código foi baixado. Se necessário, teste somente a função do
-plugin instalado, sem repetir outros recursos.
-
-## Outras operações
+Portable Agent Plugins v1 have their own admission rules and may remain disabled.
+Inspect the returned registry and name, then explicitly enable when appropriate.
+Preserve admission, permission and tool replacement errors. Do not silently add
+`--force`, `--allow-removed` or `--allow-tool-override`. Downloading source alone
+does not prove success. Verify only the affected plugin using a script.
 
 ```sh
-python3 hermes.py runtime exec -- hermes --profile default plugins disable NOME
-python3 hermes.py runtime exec -- hermes --profile default plugins enable NOME
+python3 hermes.py runtime exec -- hermes --profile default plugins disable NAME
+python3 hermes.py runtime exec -- hermes --profile default plugins enable NAME
 python3 hermes.py runtime exec -- hermes --profile default plugins check-updates --json
-python3 hermes.py runtime exec --timeout 3600 -- hermes --profile default plugins update NOME
-python3 hermes.py runtime exec -- hermes --profile default plugins remove NOME
+python3 hermes.py runtime exec --timeout 3600 -- hermes --profile default plugins update NAME
+python3 hermes.py runtime exec -- hermes --profile default plugins remove NAME
 ```
 
-`check-updates` consulta; `update NOME` altera apenas o plugin escolhido.
-Catálogo segue seus pins; uma instalação Git fixada por SHA exige escolher
-explicitamente a nova revisão, conforme a mensagem nativa. Não atualize plugins
-fazendo `git pull` indiscriminadamente em seus diretórios.
-Se a CLI exigir confirmação indisponível por stdin, use a ação equivalente
-da interface/API nativa com seu fluxo de consentimento; não simule respostas
-nem altere os arquivos internos do gerenciador para contornar a recusa.
+`check-updates` only queries; `update NAME` changes the selected plugin. Catalog
+installs follow their pins. Git installs pinned by SHA require an explicit new
+revision, as reported by the native manager. Avoid arbitrary `git pull` in plugin
+directories. When confirmation requires interactive stdin, use the native GUI/API
+consent flow rather than simulating responses or editing internal manager state.
 
-Configuração e ativação continuam em **Capabilities → Plugins**. O JSON-RPC
-nativo usa `plugins.manage` com ações `list`, `install`, `toggle`, `settings`,
-`update` e `remove`, no escopo autenticado do perfil e com parâmetros do
-contrato instalado. A ponte de operações não é um endpoint JSON-RPC.
+Configuration remains available in **Capabilities → Plugins**. Native JSON-RPC
+uses `plugins.manage` with `list`, `install`, `toggle`, `settings`, `update` and
+`remove`, in the authenticated profile using the installed API contract. The
+operations bridge is a separate command interface.
 
-## Ambiente e ativação
+Source lives in each profile's `HERMES_HOME/plugins`. Native PM stores tools,
+locks and generations on the PVC. Avoid global pip, the debug checkout's virtual
+environment and temporary installations in `/opt/hermes`.
 
-O código vive em `HERMES_HOME/plugins` do perfil; o PM mantém ferramentas,
-locks e gerações persistentes no PVC. Não use pip global, a venv do checkout
-de debug ou instalações efêmeras em `/opt/hermes`.
+Installation/activation may reload hooks. Tools and prompts follow native
+new-session behavior; disabling may leave handlers in an existing session.
+Respect `restart_required` and explain pending activation. Kubernetes supervises
+the gateway: do not start another gateway on the terminal, kill processes by name
+or use terminal systemd to restart a pod. Deployment restarts require cluster
+administration.
 
-Instalar/ativar pode recarregar hooks. Ferramentas e prompts seguem a regra
-nativa de nova sessão; desativar não desfaz necessariamente handlers carregados.
-Respeite `restart_required` e informe o que falta para a sessão em uso.
-Kubernetes supervisiona o gateway: não inicie um segundo gateway no terminal, não
-mate processos pelo nome nem use seu systemd para reiniciar o pod. Reiniciar
-o deployment é ação de administração do cluster.
+Electron plugins may need separate installation in the user's Hermes Desktop.
+Backend installation does not install that component. Check display, Docker,
+local path and external process dependencies against the terminal/pod boundary.
 
-Um plugin com metade visual para Electron pode exigir instalação adicional no
-Hermes Desktop do computador do usuário. Instalar backend não instala esse
-componente local. Plugins que dependem de display, Docker, caminhos locais ou
-processos externos precisam ser compatíveis com a divisão terminal/pod; avalie as
-dependências declaradas antes de prometer funcionamento.
-
-O controlador registra configuração sanitizada, fontes, revisões e locks em
-`customizations/<perfil>/`. Credenciais, bancos e dados pessoais continuam no
-estado privado e nos backups criptografados. Esse registro não substitui o
-gerenciador nativo.
+The controller records sanitized configuration, source, revisions and locks in
+`customizations/<profile>/`. Credentials, databases and personal data stay in
+private state and encrypted backups. This projection complements the native manager.

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 HERMES_PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-HERMES_IMAGE=${1:?Informe a imagem final}
+HERMES_IMAGE=${1:?Specify the final image}
 HERMES_BASE_IMAGE=${HERMES_BASE_IMAGE:-hermes-personal-base:local}
 mkdir -p "$HERMES_PROJECT_DIR/.build"
 HERMES_SNAPSHOT=$(mktemp -d "$HERMES_PROJECT_DIR/.build/build-XXXXXX")
@@ -11,37 +11,37 @@ if [ -z "${HERMES_BUILD_SOURCE:-}" ]; then
 fi
 HERMES_PLATFORM=${HERMES_PLATFORM:-linux/amd64}
 if [ ! -f "$HERMES_BUILD_SOURCE/source-provenance.json" ]; then
-    python3 "$HERMES_PROJECT_DIR/scripts/prepare_source.py" --output "$HERMES_BUILD_SOURCE"
+    python3 "$HERMES_PROJECT_DIR/hermes_kubernetes/source/prepare.py" --output "$HERMES_BUILD_SOURCE"
 fi
 HERMES_TREE=$(python3 - "$HERMES_PROJECT_DIR" "$HERMES_BUILD_SOURCE" <<'CHECK'
 import json, sys
 from pathlib import Path
 root, source = map(Path, sys.argv[1:])
-sys.path.insert(0, str(root / 'scripts'))
-from source_tree import fingerprint
-from prepare_source import project_revision
-from upstream_source import inputs_digest
+sys.path.insert(0, str(root))
+from hermes_kubernetes.source.tree import fingerprint
+from hermes_kubernetes.source.prepare import project_revision
+from hermes_kubernetes.source.upstream import inputs_digest
 provenance = json.loads((source / 'source-provenance.json').read_text())
 if (provenance['source_inputs_sha256'] != inputs_digest(root)
         or provenance['source_tree_sha256'] != fingerprint(source)
         or provenance['project_revision'] != project_revision(root)):
-    sys.exit('Fonte preparada está desatualizada; use HERMES_BUILD_SOURCE com um diretório novo')
+    sys.exit('Prepared source is stale; set HERMES_BUILD_SOURCE to a new directory')
 print(provenance['source_tree_sha256'])
 CHECK
 )
 HERMES_DAEMON_BUILDER=$(docker context show)
 if [ "${HERMES_SKIP_BASE_BUILD:-0}" != 1 ]; then
-    docker build --builder "$HERMES_DAEMON_BUILDER" --platform "$HERMES_PLATFORM" --label "io.hermes-pessoal.source-tree=$HERMES_TREE" \
+    docker build --builder "$HERMES_DAEMON_BUILDER" --platform "$HERMES_PLATFORM" --label "io.hermes-kubernetes.source-tree=$HERMES_TREE" \
         --tag "$HERMES_BASE_IMAGE" "$HERMES_BUILD_SOURCE"
 else
     if ! docker image inspect "$HERMES_BASE_IMAGE" >/dev/null 2>&1; then
         docker pull --platform "$HERMES_PLATFORM" "$HERMES_BASE_IMAGE"
     fi
-    HERMES_BASE_TREE=$(docker image inspect --format '{{index .Config.Labels "io.hermes-pessoal.source-tree"}}' \
+    HERMES_BASE_TREE=$(docker image inspect --format '{{index .Config.Labels "io.hermes-kubernetes.source-tree"}}' \
         "$HERMES_BASE_IMAGE")
-    [ "$HERMES_TREE" = "$HERMES_BASE_TREE" ] || { echo 'Imagem base não corresponde ao upstream e patches preparados' >&2; exit 1; }
+    [ "$HERMES_TREE" = "$HERMES_BASE_TREE" ] || { echo 'Base image does not match the prepared upstream source and patches' >&2; exit 1; }
 fi
-python3 "$HERMES_PROJECT_DIR/scripts/prepare_image_context.py" --output "$HERMES_SNAPSHOT/image"
+python3 "$HERMES_PROJECT_DIR/hermes_kubernetes/project/image_context.py" --output "$HERMES_SNAPSHOT/image"
 cp "$HERMES_BUILD_SOURCE/source-provenance.json" "$HERMES_BUILD_SOURCE/install-stamp.json" "$HERMES_SNAPSHOT/image/"
 HERMES_BASE_PLATFORM=$(docker image inspect --format '{{.Os}}/{{.Architecture}}{{if .Variant}}/{{.Variant}}{{end}}' \
     "$HERMES_BASE_IMAGE")

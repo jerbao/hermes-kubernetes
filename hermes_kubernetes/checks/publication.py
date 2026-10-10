@@ -1,0 +1,109 @@
+"""Audit the public Git inventory without printing private content or calling models."""
+
+import sys as _sys
+from pathlib import Path as _Path
+
+if __name__ == "__main__" and "__file__" in globals():
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
+import ast
+import argparse
+import json
+from pathlib import Path
+import re
+import subprocess
+
+ROOT = Path(__file__).resolve().parents[2]
+PRIVATE_PATHS = {
+    ".env",
+    "auth.json",
+    "secrets.yaml",
+    "rclone.conf",
+    "client_secret.json",
+}
+PRIVATE_MARKERS = ()
+TOKENS = re.compile(
+    r"gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|sk-ant-api\d+-[A-Za-z0-9_-]{40,}|-----BEGIN (?:OPENSSH |RSA |EC )?PRIVATE KEY-----"
+)
+
+
+def audit(root=ROOT, markers=PRIVATE_MARKERS, history=False):
+    root = Path(root)
+    rows = subprocess.check_output(
+        ["git", "-C", str(root), "ls-files", "--stage", "-z"], text=True
+    ).split("\0")
+    files = 0
+    for row in rows:
+        if not row:
+            continue
+        metadata, name = row.split("\t", 1)
+        mode, blob, stage = metadata.split()
+        path = Path(name)
+        if stage != "0" or mode not in {"100644", "100755"}:
+            raise ValueError("Unreviewed Git object: " + name)
+        if (
+            path.parts[0] == "customizations"
+            or any(p in PRIVATE_PATHS for p in path.parts)
+            or name.startswith(("vm/history/", ".local/", ".build/"))
+        ):
+            raise ValueError("Personal/generated path in public source: " + name)
+        actual = root / path
+        if actual.is_symlink():
+            raise ValueError("Source alias: " + name)
+        data = actual.read_bytes()
+        if len(data) > 8 * 1024 * 1024:
+            raise ValueError("Unexpected source size: " + name)
+        text = data.decode()
+        # The audit's own denylist must describe exactly what it rejects.
+        if any(m.lower() in text.lower() for m in markers):
+            raise ValueError("Personal identifier in public source: " + name)
+        if TOKENS.search(text):
+            raise ValueError("Credential-shaped content requires review: " + name)
+        if path.suffix == ".py":
+            ast.parse(text, filename=name)
+        if path.suffix == ".json":
+            json.loads(text)
+        files += 1
+    if not files:
+        raise ValueError("Stage public source before reviewing it")
+    commits = []
+    if history:
+        commits = subprocess.check_output(
+            ["git", "-C", str(root), "rev-list", "--all"], text=True
+        ).splitlines()
+        seen = set()
+        for commit in commits:
+            for row in subprocess.check_output(
+                ["git", "-C", str(root), "ls-tree", "-r", commit], text=True
+            ).splitlines():
+                metadata, name = row.split("\t", 1)
+                mode, kind, blob = metadata.split()
+                if blob in seen:
+                    continue
+                seen.add(blob)
+                if mode not in {"100644", "100755"} or name.startswith(
+                    ("customizations/", "vm/history/", ".local/", ".build/")
+                ):
+                    raise ValueError("Private or aliased historical source: " + name)
+                text = subprocess.check_output(
+                    ["git", "-C", str(root), "cat-file", "blob", blob]
+                ).decode()
+                if TOKENS.search(text) or any(m.lower() in text.lower() for m in markers):
+                    raise ValueError("Historical content requires private review: " + name)
+    print(
+        json.dumps(
+            {
+                "public_source": "reviewed",
+                "files": files,
+                "history_commits": len(commits),
+                "model_calls": 0,
+            }
+        )
+    )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--deny-marker", action="append", default=[])
+    parser.add_argument("--history", action="store_true")
+    args = parser.parse_args()
+    audit(markers=args.deny_marker, history=args.history)

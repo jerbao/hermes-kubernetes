@@ -33,13 +33,13 @@ replaceable when its durable workspace is stored independently.
 Use a published stable distribution release, then create a private repository:
 
 ```sh
-python3 scripts/create_instance.py --directory ../my-hermes --release v0.1.0
+python3 hermes_kubernetes/instances/generator.py --directory ../my-hermes --release v0.1.0
 cd ../my-hermes
 # Review instance.json and your private Kubernetes overlay.
 gh repo create my-hermes --private --source . --push
 ```
 
-See [installation](docs/instalacao.md) for credentials, networking and activation.
+See [installation](docs/installation/getting-started.md) for credentials, networking and activation.
 The generator refuses to overwrite existing files. It creates a version lock,
 bootstrap CLI and update workflow; it does not put personal state in this repo.
 Your private GitOps repository controls deployment, including image promotion.
@@ -54,7 +54,7 @@ merging is the owner's decision. A failed update creates a GitHub issue.
 Skills use three-way reconciliation, preserving compatible personal edits.
 Conflicts stop the candidate before any active skill is overwritten. Publishing
 an image never grants the public workflow access to a private deployment.
-See [updates](docs/atualizacoes.md) and [private instances](docs/instancias.md).
+See [updates](docs/development/updates.md) and [private instances](docs/installation/private-instances.md).
 
 ## Development
 
@@ -68,6 +68,6 @@ make build IMAGE=hermes-kubernetes:local
 
 `hermes-agent/` is an ignored checkout rebuilt from `upstream.lock.json` and
 `patches/`. Dependencies, SQLite databases, conversations, OAuth files and caches
-are not committed. [Directory guide](docs/estrutura.md).
+are not committed. [Directory guide](docs/structure.md).
 
 Upstream licenses and attribution: [LICENSE](LICENSE), [NOTICE](NOTICE).

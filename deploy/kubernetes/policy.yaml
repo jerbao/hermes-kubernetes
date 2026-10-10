@@ -1,0 +1,15 @@
+terminal:
+  backend: ssh
+  cwd: ~/.hermes
+  timeout: 3600
+model:
+  key_env: CLI_PROXY_API_KEY
+bot_desktop:
+  placement: terminal
+skills:
+  external_dirs:
+  - /opt/hermes-personal/skills
+mcp:
+  stdio_executor:
+    command: /opt/hermes/.venv/bin/python
+    args: [/opt/hermes-personal/hermes_kubernetes/mcp/bridge.py, --execution]

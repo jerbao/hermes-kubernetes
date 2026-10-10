@@ -50,7 +50,7 @@
     },
     {
       "path": "patches/0005-managed-skills.patch",
-      "sha256": "5983040a76b965f6b57c3c59bb8f8f8e04e01c0699931cb37a4ca5f68bfd9342",
+      "sha256": "1092909c5ef6f9bbb1ded21d743a6abaaf6e3195151885cea04498b0ddfabd46",
       "description": "Skills oficiais adaptadas ao runtime separado e \u00e0 autoger\u00eancia via ponte",
       "native_tests": []
     }

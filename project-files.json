@@ -1,32 +1,6 @@
 {
   "schema": 1,
-  "runtime_files": [
-    "backup_archive.py",
-    "backup_job.py",
-    "drive_backup.py",
-    "install_backup_tool.py",
-    "prepare_state.py",
-    "configuration.py",
-    "dependencies.py",
-    "diagnostics_sync.py",
-    "mcp_routing.py",
-    "mcp_update.py",
-    "operations.py",
-    "operations_protocol.py",
-    "operations_tunnel.py",
-    "probe.py",
-    "restore_workspace.py",
-    "ssh_mcp.py",
-    "start.py",
-    "state_snapshot.py",
-    "workspace_guard.py",
-    "workspace_policy.py",
-    "workspace_snapshot.py",
-    "restore_git_cache.py",
-    "versioned_state.py",
-    "acceptance.py",
-    "skill_updates.py"
-  ],
+  "runtime_files": [],
   "skills": [
     "hermes-self-management"
   ]

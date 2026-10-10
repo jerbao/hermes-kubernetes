@@ -3,7 +3,7 @@
   "groups": [
     {
       "path": "patches/0001-runtime-almalinux.patch",
-      "description": "Imagem AlmaLinux x86-64-v2 e dependências do runtime",
+      "description": "AlmaLinux x86-64-v2 image and runtime dependencies",
       "files": [
         "Dockerfile",
         "pm/lock.json"
@@ -12,7 +12,7 @@
     },
     {
       "path": "patches/0002-ssh-terminal.patch",
-      "description": "Transporte SSH, sincronização de arquivos e isolamento por perfil",
+      "description": "SSH transport, file synchronization and profile isolation",
       "files": [
         "tools/environments/file_sync.py",
         "tools/environments/ssh.py",
@@ -31,7 +31,7 @@
     },
     {
       "path": "patches/0003-anthropic-usage.patch",
-      "description": "Contabilização nativa de tokens e cache Anthropic no adaptador auxiliar",
+      "description": "Native Anthropic token and cache accounting in the auxiliary adapter",
       "files": [
         "agent/auxiliary_client.py",
         "tests/agent/test_anthropic_auxiliary_usage.py"
@@ -44,7 +44,7 @@
     },
     {
       "path": "patches/0004-mcp-stdio-executor.patch",
-      "description": "Executor stdio externo e transporte do catálogo MCP na API da interface",
+      "description": "External stdio executor and MCP catalog transport in the interface API",
       "files": [
         "hermes_cli/config_defaults.py",
         "tools/mcp_tool.py",
@@ -61,7 +61,7 @@
     },
     {
       "path": "patches/0005-managed-skills.patch",
-      "description": "Skills oficiais adaptadas ao runtime separado e à autogerência via ponte",
+      "description": "Official skills adapted to the separate runtime and self-management bridge",
       "files": [
         "skills/autonomous-ai-agents/hermes-agent/SKILL.md",
         "skills/software-development/hermes-agent-skill-authoring/SKILL.md",

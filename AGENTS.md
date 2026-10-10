@@ -15,4 +15,11 @@ in independent private instance repositories.
 - Publish immutable digests and release manifests. Private consumers update by
   PR, preserving customizations and blocking conflicts with GitHub alerts.
 - Never introduce a person's namespaces, endpoints, profiles or credentials as
-  defaults. Review publication with scripts/check_publication.py.
+  defaults. Review publication with hermes_kubernetes/checks/publication.py.
+
+Shared Python belongs in `hermes_kubernetes/<domain>/` with qualified imports.
+Keep orchestration entry points thin and put reusable behavior in domain modules.
+Containers, dependency locks, deployment templates and systemd units have their
+own top-level directories; tests mirror code domains. Document additions in English.
+Run `ruff check` and `ruff format --check` with the pinned development version.
+`make validate` checks imports and isolated build contexts for both image families.

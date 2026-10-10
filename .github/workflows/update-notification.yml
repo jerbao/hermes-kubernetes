@@ -31,4 +31,4 @@ jobs:
           UPSTREAM_ALERT_USERS: ${{ vars.UPSTREAM_ALERT_USERS || github.repository_owner }}
           UPDATE_RESULT: ${{ inputs.status }}
           UPDATE_INCIDENT: ${{ inputs.incident }}
-        run: python3 scripts/report_update_status.py --status "$UPDATE_RESULT" --incident "$UPDATE_INCIDENT"
+        run: python3 hermes_kubernetes/releases/notifications.py --status "$UPDATE_RESULT" --incident "$UPDATE_INCIDENT"

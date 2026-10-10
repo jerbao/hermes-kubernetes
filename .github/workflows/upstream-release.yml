@@ -23,9 +23,9 @@ jobs:
       - run: python -m pip install -r requirements-dev.txt
       - run: |
           mkdir -p .build
-          python scripts/update_release.py --update-lock --output .build/upstream-release.json
+          python hermes_kubernetes/source/releases.py --update-lock --output .build/upstream-release.json
       - run: |
-          python runtime/install_backup_tool.py --lock config/rclone.lock.json --destination "$RUNNER_TEMP/backup-tools/rclone"
+          python hermes_kubernetes/backup/tools.py --lock config/rclone.lock.json --destination "$RUNNER_TEMP/backup-tools/rclone"
           echo "$RUNNER_TEMP/backup-tools" >> "$GITHUB_PATH"
       - name: Review changed source
         run: |
@@ -35,7 +35,7 @@ jobs:
       - name: Open upstream review PR
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python distribution/update_pr.py --upstream
+        run: python hermes_kubernetes/instances/pull_requests.py --upstream
       - uses: actions/upload-artifact@v4
         if: always()
         with:
