@@ -1,5 +1,10 @@
 # Installation
 
+Use Python 3.12 or newer and Git on the terminal. Kubernetes overlay rendering
+requires `kubectl` with Kustomize. Local release updates also need PyYAML 6.0.3;
+install it in a dedicated virtual environment and use that environment's Python
+for `hermes.py update`. The generated GitHub workflow installs its own dependency.
+
 Generate an independent private repository using hermes_kubernetes/instances/generator.py.
 The generated instance.json must be customized: terminal hostname, SSH user,
 timezone, model and proxy URL belong to that installation. Configure state and

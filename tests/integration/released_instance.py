@@ -18,7 +18,10 @@ def command(argv, directory, environment):
         argv, cwd=directory, env=environment, capture_output=True, text=True, timeout=600
     )
     if result.returncode:
-        raise RuntimeError(f"Release acceptance command failed ({result.returncode}): {argv[0]}")
+        raise RuntimeError(
+            f"Release acceptance command failed ({result.returncode}): {' '.join(argv[:2])}\n"
+            + result.stderr[-3000:]
+        )
     return result.stdout
 
 
@@ -35,7 +38,7 @@ def verify(repository, version, core_source=False):
     for key in ("GH_TOKEN", "GITHUB_TOKEN", "HERMES_SOURCE_DIR", "GIT_CONFIG_COUNT"):
         environment.pop(key, None)
     with tempfile.TemporaryDirectory(prefix="hermes-release-acceptance-") as temporary:
-        roots = [Path(temporary) / name for name in ("first", "second")]
+        roots = [Path(temporary).resolve() / name for name in ("first", "second")]
         for root in roots:
             create(root, manifest)
             result = json.loads(command([sys.executable, "hermes.py", "check"], root, environment))
