@@ -9,10 +9,10 @@ import subprocess
 ROOT=Path(__file__).resolve().parents[1]
 PRIVATE_PATHS={'.env','auth.json','secrets.yaml','rclone.conf','client_secret.json'}
 PRIVATE_MARKERS=()
-TOKENS=re.compile(r'gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|sk-ant-api\d+-[A-Za-z0-9_-]{40,}|-----BEGIN (?:OPENSSH|RSA|EC|PRIVATE) PRIVATE KEY-----')
+TOKENS=re.compile(r'gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|sk-ant-api\d+-[A-Za-z0-9_-]{40,}|-----BEGIN (?:OPENSSH |RSA |EC )?PRIVATE KEY-----')
 
 
-def audit(root=ROOT, markers=PRIVATE_MARKERS):
+def audit(root=ROOT, markers=PRIVATE_MARKERS, history=False):
     root=Path(root);rows=subprocess.check_output(['git','-C',str(root),'ls-files','--stage','-z'],text=True).split('\0')
     files=0
     for row in rows:
@@ -34,9 +34,24 @@ def audit(root=ROOT, markers=PRIVATE_MARKERS):
         if path.suffix=='.json':json.loads(text)
         files+=1
     if not files:raise ValueError('Stage public source before reviewing it')
-    print(json.dumps({'public_source':'reviewed','files':files,'model_calls':0}))
+    commits=[]
+    if history:
+        commits=subprocess.check_output(['git','-C',str(root),'rev-list','--all'],text=True).splitlines()
+        seen=set()
+        for commit in commits:
+            for row in subprocess.check_output(['git','-C',str(root),'ls-tree','-r',commit],text=True).splitlines():
+                metadata,name=row.split('\t',1);mode,kind,blob=metadata.split()
+                if blob in seen:continue
+                seen.add(blob)
+                if mode not in {'100644','100755'} or name.startswith(('customizations/','vm/history/','.local/','.build/')):
+                    raise ValueError('Private or aliased historical source: '+name)
+                text=subprocess.check_output(['git','-C',str(root),'cat-file','blob',blob]).decode()
+                if TOKENS.search(text) or any(m.lower() in text.lower() for m in markers):
+                    raise ValueError('Historical content requires private review: '+name)
+    print(json.dumps({'public_source':'reviewed','files':files,'history_commits':len(commits),'model_calls':0}))
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--deny-marker',action='append',default=[])
-    args=parser.parse_args();audit(markers=args.deny_marker)
+    parser.add_argument('--history',action='store_true')
+    args=parser.parse_args();audit(markers=args.deny_marker,history=args.history)
