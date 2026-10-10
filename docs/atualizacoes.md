@@ -13,7 +13,10 @@ There are two review boundaries:
 Release publication runs only on a protected `v*` tag or manual dispatch. It
 builds/tests Hermes and both MCP images, then attaches distribution.json to the
 GitHub release. The manifest pins all image digests and the exact source commit.
-No release is emitted if a component fails.
+No release is emitted if a component fails or an image cannot be pulled
+anonymously. On the first publication, GHCR defaults to private packages: the
+maintainer must set the three new package visibilities to Public once, then rerun
+only the failed publication job. No image rebuild is needed for that setting.
 
 Private updates are opt-in merges. Their GitOps overlay pins the new images;
 ArgoCD or another deployment controller applies the reviewed private manifests.

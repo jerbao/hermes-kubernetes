@@ -7,6 +7,7 @@ import subprocess
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'distribution'))
 from release import COMPONENTS, dump, validate
+from images import public_images
 
 
 def main():
@@ -14,6 +15,7 @@ def main():
     repository=os.environ['GITHUB_REPOSITORY'];revision=os.environ['GITHUB_SHA']
     value=validate({'schema':1,'repository':repository,'version':a.version,'revision':revision,
                     'images':{c:(a.digests/(c+'.txt')).read_text().strip() for c in COMPONENTS}})
+    public_images(value)
     existing=subprocess.run(['gh','release','view',a.version,'--repo',repository],capture_output=True)
     if existing.returncode==0:raise ValueError('Release already exists; immutable releases are never overwritten')
     manifest=a.digests/'distribution.json';manifest.write_text(dump(value))
