@@ -228,6 +228,35 @@ class SkillUpdatesTests(unittest.TestCase):
         self.assertIn(b"new first", active.read_bytes())
         self.assertIn(b"personal last", active.read_bytes())
 
+    def test_partial_managed_reference_preserves_private_edit_without_skill_marker(self):
+        project, _ = self.project()
+        reference = "skills/guide/references/configuration.md"
+        put(self.source / reference)
+        git(self.source, "add", "skills")
+        git(self.source, "commit", "-qm", "managed reference")
+        lock = json.loads((project / "upstream.lock.json").read_text())
+        lock["revision"] = git(self.source, "rev-parse", "HEAD")
+        put(project / "upstream.lock.json", json.dumps(lock).encode())
+        recipe = project / "customizations/default/installations.json"
+        value = json.loads(recipe.read_text())
+        value["upstream_skills"] = ["skills/guide/SKILL.md"]
+        put(recipe, json.dumps(value).encode())
+        private = project / "customizations/default" / reference
+        put(private, TEXT.replace(b"last", b"personal last"))
+        git(project, "add", ".")
+        git(project, "commit", "-qm", "partial private override")
+        base = git(project, "rev-parse", "HEAD")
+        put(self.source / reference, TEXT.replace(b"first", b"new first"))
+        git(self.source, "commit", "-qam", "reference update")
+        lock["revision"] = git(self.source, "rev-parse", "HEAD")
+        put(project / "upstream.lock.json", json.dumps(lock).encode())
+
+        report = reconcile(project, self.source, base, write=True)
+        self.assertTrue(report["ready"])
+        self.assertIn(b"new first", private.read_bytes())
+        self.assertIn(b"personal last", private.read_bytes())
+        self.assertFalse((private.parents[1] / "SKILL.md").exists())
+
     def test_candidate_conflict_leaves_entire_git_projection_untouched(self):
         project, base = self.project()
         template = project / "skills/management/SKILL.md"

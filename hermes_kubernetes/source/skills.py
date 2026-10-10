@@ -58,6 +58,27 @@ def git_distribution(root, revision):
     return result
 
 
+def projected_skills(directory, templates):
+    """Include private reference overrides whose managed SKILL.md is not duplicated."""
+    directory = Path(directory)
+    result = snapshot(directory)
+    for path in directory.rglob("*"):
+        name = "skills/" + path.relative_to(directory).as_posix()
+        if name in result or group(name, templates) is None:
+            continue
+        if path.is_symlink() or any(p.is_symlink() for p in path.parents):
+            raise ValueError("Symlink in private skill projection")
+        if path.is_file():
+            data = path.read_bytes()
+            if len(data) > 8 * 1024 * 1024:
+                raise ValueError("Private skill file exceeds 8 MiB")
+            result[name] = {
+                "data": base64.b64encode(data).decode(),
+                "mode": 0o700 if path.stat().st_mode & 0o111 else 0o600,
+            }
+    return result
+
+
 def reconcile(root, source, base_revision, write=False):
     root, source = Path(root).resolve(), Path(source).resolve()
     previous_lock = json.loads(git(root, "show", base_revision + ":upstream.lock.json"))
@@ -110,7 +131,7 @@ def reconcile(root, source, base_revision, write=False):
         ]:
             if name in previous:
                 current[name] = previous[name]
-        projected = snapshot(profile / "skills")
+        projected = projected_skills(profile / "skills", {**previous, **desired})
         # Older projections explicitly carry installed distribution copies.
         if not recipe:
             installed_groups = {group(name, previous) for name in projected}
