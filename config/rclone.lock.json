@@ -1,0 +1,7 @@
+{
+  "version": "1.75.2",
+  "archives": {
+    "linux-amd64": "349ac8fba6ff65d6247043f1750cdcb518ec5d500ef91463a10d37c0ccdf3702",
+    "osx-arm64": "610ab7d48615135dfc60b763858b11a426a0d3d1160c1bb76fb0ae6011b02edd"
+  }
+}

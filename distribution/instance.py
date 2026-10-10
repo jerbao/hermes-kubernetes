@@ -1,0 +1,68 @@
+"""Commands for a private instance consuming this distribution as a dependency."""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+BUNDLE=Path(__file__).resolve().parents[1]
+sys.path[:0]=[str(BUNDLE/'scripts'),str(BUNDLE/'runtime'),str(BUNDLE/'vm')]
+
+
+def synchronize(root, publish_changes=False):
+    from sync_workspace import sync
+    from version_workspace import PendingRuntime, SocketRuntime, reconcile, publish
+    from workspace_guard import guard
+    # sync() has its own flock. Release it before native reconciliation.
+    state=sync(root)
+    if state not in {'current','updated','local-changes','diverged'}:
+        raise ValueError('Private workspace requires review: '+state)
+    pinned=json.loads((root/'platform.lock.json').read_text())['revision']
+    actual=subprocess.check_output(['git','-C',str(BUNDLE),'rev-parse','HEAD'],text=True).strip()
+    if pinned!=actual:
+        print(json.dumps({'status':'reload-distribution'}));return 0
+    with guard(root/'state/workspace-sync.lock',create=True,blocking=False):
+        backend=SocketRuntime(root,root/'.local/runtime/control.sock',bundle=BUNDLE)
+        result=reconcile(root,backend)
+        if publish_changes and result['status']=='synchronized':result['git']=publish(root)
+        elif result['status']=='waiting-for-runtime':
+            # Never apply projections based on a different active release.
+            result['git']={'status':'waiting-for-runtime'}
+        print(json.dumps(result))
+        return 0 if result['status'] in {'synchronized','waiting-for-runtime'} else 2
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--root',required=True,type=Path)
+    commands=p.add_subparsers(dest='command',required=True)
+    commands.add_parser('runtime').add_argument('arguments',nargs=argparse.REMAINDER)
+    sync=commands.add_parser('sync');sync.add_argument('--publish',action='store_true')
+    commands.add_parser('source');commands.add_parser('source-status')
+    update=commands.add_parser('update');update.add_argument('--version',default='latest');update.add_argument('--check-only',action='store_true')
+    commands.add_parser('check')
+    a=p.parse_args();root=a.root.resolve()
+    if a.command=='runtime':
+        environment=dict(os.environ,HERMES_HOME=str(root))
+        return subprocess.call([sys.executable,str(BUNDLE/'vm/runtime_client.py'),*a.arguments],env=environment)
+    if a.command=='sync':return synchronize(root,a.publish)
+    if a.command=='source':
+        from editable_source import ensure
+        print(json.dumps(ensure(BUNDLE,root/'hermes-agent')));return 0
+    if a.command=='source-status':
+        from editable_source import status
+        report=status(BUNDLE,root/'hermes-agent');print(json.dumps(report));return 0 if report['state']=='current' else 2
+    if a.command=='update':
+        from update_instance import update
+        report=update(root,a.version,write=not a.check_only);print(json.dumps(report));return 0
+    from release import validate
+    from check_customizations import projection
+    validate(json.loads((root/'platform.lock.json').read_text()))
+    files=projection(root)
+    print(json.dumps({'valid':True,'personal_files':len(files),'model_calls':0}));return 0
+
+
+if __name__=='__main__':
+    try:raise SystemExit(main())
+    except (OSError,ValueError,RuntimeError,subprocess.SubprocessError) as error:
+        raise SystemExit('Instance command failed: '+str(error))

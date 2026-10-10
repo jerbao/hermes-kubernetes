@@ -1,0 +1,15 @@
+{
+  "source": "validation profile snapshot; names, transports, and public package identities only",
+  "servers": [
+    {"name": "aws-knowledge", "transport": "http", "identity": "provider-managed"},
+    {"name": "chrome-devtools", "transport": "stdio", "identity": "npm:chrome-devtools-mcp@latest"},
+    {"name": "codegraph", "transport": "stdio", "identity": "npm:@colbymchenry/codegraph"},
+    {"name": "context7", "transport": "stdio", "identity": "npm:@upstash/context7-mcp"},
+    {"name": "github", "transport": "stdio", "identity": "npm:@modelcontextprotocol/server-github"},
+    {"name": "gitlab", "transport": "http", "identity": "provider-managed"},
+    {"name": "huggingface", "transport": "http", "identity": "provider-managed"},
+    {"name": "interjato-gitlab", "transport": "stdio", "identity": "npm:@zereight/mcp-gitlab@latest"},
+    {"name": "playwright", "transport": "stdio", "identity": "npm:@playwright/mcp@latest"},
+    {"name": "sequential_thinking", "transport": "stdio", "identity": "npm:@modelcontextprotocol/server-sequential-thinking"}
+  ]
+}

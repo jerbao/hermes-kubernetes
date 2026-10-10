@@ -1,0 +1,9 @@
+[Unit]
+Description=Verified private backup of the Kubernetes Hermes state
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 %h/.hermes/vm/backup_runtime.py --directory %h/hermes-backups/default --keep 6
+TimeoutStartSec=30min
+Nice=10

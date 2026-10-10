@@ -1,0 +1,63 @@
+diff --git a/agent/auxiliary_client.py b/agent/auxiliary_client.py
+index 7404bccb..654a8d7e 100644
+--- a/agent/auxiliary_client.py
++++ b/agent/auxiliary_client.py
+@@ -1798,10 +1798,10 @@ class _AnthropicCompletionsAdapter:
+         if hasattr(response, "usage") and response.usage:
+             prompt_tokens = getattr(response.usage, "input_tokens", 0) or 0
+             completion_tokens = getattr(response.usage, "output_tokens", 0) or 0
+-            usage = SimpleNamespace(
+-                prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+-                total_tokens=getattr(response.usage, "total_tokens", 0) or (prompt_tokens + completion_tokens),
+-            )
++            # MoA normalizes by wire protocol; retain native token and cache buckets.
++            usage = SimpleNamespace(**vars(response.usage))
++            usage.prompt_tokens, usage.completion_tokens = prompt_tokens, completion_tokens
++            usage.total_tokens = getattr(response.usage, "total_tokens", 0) or (prompt_tokens + completion_tokens)
+         # ToolCall already duck-types as OpenAI shape via properties.
+         choice = SimpleNamespace(
+             index=0,
+diff --git a/tests/agent/test_anthropic_auxiliary_usage.py b/tests/agent/test_anthropic_auxiliary_usage.py
+new file mode 100644
+index 00000000..3246ce6d
+--- /dev/null
++++ b/tests/agent/test_anthropic_auxiliary_usage.py
+@@ -0,0 +1,38 @@
++"""Anthropic auxiliary responses retain native usage for MoA accounting."""
++from types import SimpleNamespace
++from unittest.mock import patch
++
++import pytest
++
++
++@pytest.mark.parametrize("cache_read,cache_write", [(0, 0), (30, 40)])
++def test_anthropic_auxiliary_usage_reaches_moa_accounting(cache_read, cache_write):
++    from agent.auxiliary_client import AnthropicAuxiliaryClient
++    from agent.moa_loop import _price_reference_response
++
++    native = SimpleNamespace(
++        id="fixture-response", model="claude-sonnet-4-6", stop_reason="end_turn",
++        content=[SimpleNamespace(type="text", text="advisor response")],
++        usage=SimpleNamespace(input_tokens=100, output_tokens=25,
++                              cache_read_input_tokens=cache_read,
++                              cache_creation_input_tokens=cache_write),
++    )
++    wrapper = AnthropicAuxiliaryClient(SimpleNamespace(), "claude-sonnet-4-6",
++                                      "fixture-key", "https://proxy.example")
++    with patch("agent.anthropic_adapter.create_anthropic_message", return_value=native):
++        response = wrapper.chat.completions.create(
++            model="claude-sonnet-4-6", messages=[{"role": "user", "content": "Advise"}],
++        )
++    pricing = SimpleNamespace(amount_usd=None, status="unknown", source="none")
++    with patch("agent.usage_pricing.estimate_usage_cost", return_value=pricing):
++        usage, *_ = _price_reference_response(
++            response, {"model": "claude-sonnet-4-6"},
++            {"provider": "custom", "api_mode": "anthropic_messages"},
++        )
++    assert response.choices[0].message.content == "advisor response"
++    assert (usage.input_tokens, usage.output_tokens) == (100, 25)
++    assert (usage.cache_read_tokens, usage.cache_write_tokens) == (cache_read, cache_write)
++    # Existing consumers can still read the OpenAI-compatible aliases.
++    assert (response.usage.prompt_tokens, response.usage.completion_tokens) == (100, 25)
++    assert response.usage.total_tokens == 125
++    assert not hasattr(native.usage, "prompt_tokens")

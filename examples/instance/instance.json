@@ -1,0 +1,14 @@
+{
+  "name": "hermes",
+  "network": "cluster",
+  "terminal_host": "terminal.example.net",
+  "terminal_transport": "direct",
+  "terminal_port": 22,
+  "ssh_user": "hermes",
+  "workspace": "~/.hermes",
+  "model": "default",
+  "timezone": "UTC",
+  "proxy": {
+    "base_url": "http://cli-proxy-api:8317/v1"
+  }
+}

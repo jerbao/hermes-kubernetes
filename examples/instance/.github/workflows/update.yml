@@ -1,0 +1,54 @@
+name: Review shared Hermes updates
+on:
+  schedule:
+    - cron: '43 11 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+concurrency:
+  group: hermes-instance-update
+  cancel-in-progress: false
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: python -m pip install PyYAML==6.0.3
+      - run: python hermes.py update
+      - run: python hermes.py check
+      - name: Open candidate PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bundle="$(python -c 'import json; print(".local/platform/"+json.load(open("platform.lock.json"))["revision"])')"
+          python "$bundle/distribution/update_pr.py"
+      - name: Preserve private conflict report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-skill-update-report
+          path: .local/update-report.json
+          if-no-files-found: ignore
+      - name: Notify failure or recovery
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_STATUS: ${{ job.status }}
+          UPSTREAM_ALERT_USERS: ${{ vars.UPSTREAM_ALERT_USERS || github.repository_owner }}
+        run: |
+          bundle="$(python -c 'import json; print(".local/platform/"+json.load(open("platform.lock.json"))["revision"])')"
+          if [ -f "$bundle/scripts/report_update_status.py" ]; then
+            python "$bundle/scripts/report_update_status.py" --status "$UPDATE_STATUS" --incident image
+          else
+            printf '%s\n' 'Distribution bootstrap failed. Review this workflow run.' > /tmp/hermes-update-failure.md
+            gh issue create --title 'Hermes distribution bootstrap failed' --body-file /tmp/hermes-update-failure.md
+          fi

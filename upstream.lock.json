@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/NousResearch/hermes-agent",
+  "revision": "818c13be1dc4fd28987e1e881a9408224afd4535",
+  "release": {
+    "tag": "v0.21.6",
+    "commit": "818c13be1dc4fd28987e1e881a9408224afd4535",
+    "id": 406714323,
+    "published_at": "2026-10-08T11:51:57Z",
+    "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.6"
+  },
+  "patches": [
+    {
+      "path": "patches/0001-runtime-almalinux.patch",
+      "sha256": "270f306be99cf7ea5a5ddf0c32f9b209434241576958820f348bd1107b591f81",
+      "description": "Imagem AlmaLinux x86-64-v2 e depend\u00eancias do runtime",
+      "native_tests": []
+    },
+    {
+      "path": "patches/0002-ssh-terminal.patch",
+      "sha256": "0075659b66497e66d316e602ef9ccd244e8a8aa4f1269dedaccb969494d98e7e",
+      "description": "Transporte SSH, sincroniza\u00e7\u00e3o de arquivos e isolamento por perfil",
+      "native_tests": [
+        "tests/tools/test_ssh_command_batches.py",
+        "tests/tools/test_ssh_bulk_upload.py",
+        "tests/tools/test_ssh_environment.py",
+        "tests/tools/test_file_sync.py",
+        "tests/tools/test_ssh_return_scope.py",
+        "tests/tools/test_ssh_profile_sync.py"
+      ]
+    },
+    {
+      "path": "patches/0003-anthropic-usage.patch",
+      "sha256": "067cd61f3d1b32e172958a6387caff3ab0c039045bda30c33d7e30fe7e6ba7e6",
+      "description": "Contabiliza\u00e7\u00e3o nativa de tokens e cache Anthropic no adaptador auxiliar",
+      "native_tests": [
+        "tests/agent/test_anthropic_auxiliary_usage.py",
+        "tests/agent/test_auxiliary_client_anthropic_custom.py",
+        "tests/agent/test_moa_slot_api_mode.py"
+      ]
+    },
+    {
+      "path": "patches/0004-mcp-stdio-executor.patch",
+      "sha256": "df62dab71415ab792047b810491193c82301a4189c64adbecf7953e254fa0f91",
+      "description": "Executor stdio externo e transporte do cat\u00e1logo MCP na API da interface",
+      "native_tests": [
+        "tests/tools/test_mcp_stdio_executor.py",
+        "tests/tui_gateway/test_mcp_catalog_rpc_transport.py"
+      ]
+    },
+    {
+      "path": "patches/0005-managed-skills.patch",
+      "sha256": "5983040a76b965f6b57c3c59bb8f8f8e04e01c0699931cb37a4ca5f68bfd9342",
+      "description": "Skills oficiais adaptadas ao runtime separado e \u00e0 autoger\u00eancia via ponte",
+      "native_tests": []
+    }
+  ],
+  "native_tests": [
+    "tests/tools/test_ssh_command_batches.py",
+    "tests/tools/test_ssh_bulk_upload.py",
+    "tests/tools/test_ssh_environment.py",
+    "tests/tools/test_file_sync.py",
+    "tests/tools/test_ssh_return_scope.py",
+    "tests/tools/test_ssh_profile_sync.py",
+    "tests/agent/test_anthropic_auxiliary_usage.py",
+    "tests/agent/test_auxiliary_client_anthropic_custom.py",
+    "tests/agent/test_moa_slot_api_mode.py",
+    "tests/tools/test_mcp_stdio_executor.py",
+    "tests/tui_gateway/test_mcp_catalog_rpc_transport.py"
+  ]
+}

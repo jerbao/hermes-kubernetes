@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!requirements.txt
+!runner.py
+!packages.py
+!package.json
+!package-lock.json

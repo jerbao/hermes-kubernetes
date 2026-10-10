@@ -1,0 +1,26 @@
+name: Distribution CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  project:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python scripts/check_publication.py
+      - run: |
+          python runtime/install_backup_tool.py --lock config/rclone.lock.json --destination "$RUNNER_TEMP/backup-tools/rclone"
+          echo "$RUNNER_TEMP/backup-tools" >> "$GITHUB_PATH"
+      - run: make validate test test-mcp test-hermes
+      - run: kubectl kustomize distribution/kubernetes > /tmp/hermes-kubernetes.yaml

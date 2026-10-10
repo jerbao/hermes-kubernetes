@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: hermes
+resources:
+- namespace.yaml
+- serviceaccount.yaml
+- pvc.yaml
+- deployment.yaml
+- service.yaml
+- networkpolicy.yaml
+configMapGenerator:
+- name: hermes-policy
+  files:
+  - config.yaml=policy.yaml
+  - instance.json=instance.json

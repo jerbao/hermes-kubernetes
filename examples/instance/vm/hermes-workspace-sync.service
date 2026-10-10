@@ -1,0 +1,9 @@
+[Unit]
+Description=Synchronize private Hermes instance
+After=network-online.target
+[Service]
+Type=oneshot
+TimeoutStartSec=10min
+WorkingDirectory=%h/.hermes
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 %h/.hermes/hermes.py sync --publish

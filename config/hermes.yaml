@@ -1,0 +1,13 @@
+# Initial preferences for a fresh PVC. Subsequent preferences live in the PVC.
+model:
+  provider: custom
+  default: default
+  base_url: http://cli-proxy-api:8317/v1
+  key_env: CLI_PROXY_API_KEY
+terminal:
+  backend: ssh
+  cwd: ~/.hermes
+  timeout: 3600
+bot_desktop:
+  placement: terminal
+timezone: UTC

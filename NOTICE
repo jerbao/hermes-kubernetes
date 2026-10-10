@@ -1,0 +1,10 @@
+Hermes Kubernetes packages the official Hermes Agent with a separate Kubernetes
+runtime, external terminal integration, MCP executors and focused patches.
+Hermes Agent: https://github.com/NousResearch/hermes-agent
+Copyright (c) 2025 Nous Research. Distributed under the MIT license in LICENSE.
+Original integration code: copyright (c) 2026 Hermes Kubernetes contributors,
+also distributed under the MIT license.
+
+This project is an independent distribution, not an official Nous Research service.
+Internal /opt/hermes-personal paths are retained for compatibility with existing
+patches and integrations; they do not select a particular user's installation.

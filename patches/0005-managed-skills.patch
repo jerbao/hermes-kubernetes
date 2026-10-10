@@ -1,0 +1,259 @@
+diff --git a/skills/autonomous-ai-agents/hermes-agent/SKILL.md b/skills/autonomous-ai-agents/hermes-agent/SKILL.md
+index a184b3a4..c14d4917 100644
+--- a/skills/autonomous-ai-agents/hermes-agent/SKILL.md
++++ b/skills/autonomous-ai-agents/hermes-agent/SKILL.md
+@@ -14,6 +14,35 @@ metadata:
+ 
+ # Hermes Agent
+ 
++## Managed deployment: choose the runtime first
++
++For this distribution, load `hermes-self-management` with `skill_view` before
++administering Hermes. Its deployment-specific routing takes precedence over the
++standalone commands and home paths below; native feature semantics still apply.
++The `terminal` tool runs in a separate SSH terminal, while the active profile state and
++Hermes process are in Kubernetes. From the project root in the terminal, use
++`python3 hermes.py runtime info`, then execute native administration through
++`python3 hermes.py runtime exec -- hermes --profile PROFILE ...`.
++Use the requested profile explicitly, including `default`. Native profile-aware
++tools and the connected UI already act on the runtime; do not wrap them again.
++If the skill or operations bridge is unavailable, report the missing dependency
++instead of administering a local installation. Paths such as `~/.hermes/config.yaml`
++in this reference describe native state in the runtime, not the SSH terminal project root.
++Desktop-local components belong to the user's Desktop installation; a backend
++plugin installation does not install its Desktop UI component.
++
++The installer and interactive local-process examples below apply to a separate,
++explicitly requested standalone installation, not maintenance of this runtime.
++Do not launch another gateway/dashboard in the SSH terminal or update the active core via
++`hermes update`, local package installation or an in-place source pull. Core
++changes follow pinned upstream + exported patches + CI image + GitOps deployment.
++For MCPs, use the native UI/CLI and executor policy described in
++`hermes-self-management`; do not install their dependencies in the terminal or
++Hermes image. For personal skills, use `skill_manage` in the requested profile;
++Git projection happens automatically. Do not edit past session prompts to reload
++these instructions: start a new session when needed.
++
++
+ Hermes Agent is an open-source AI agent framework by Nous Research that runs in your terminal, a native desktop app, messaging platforms, and IDEs. It's in the same category as Claude Code (Anthropic), Codex (OpenAI), and OpenClaw — autonomous coding and task-execution agents that use tool calling to interact with your system. Hermes works with any LLM provider (OpenRouter, Anthropic, OpenAI, Google, DeepSeek, xAI, local models, and 20+ others) and runs on Linux, macOS, Windows, and WSL.
+ 
+ What makes Hermes different:
+diff --git a/skills/autonomous-ai-agents/hermes-agent/references/cli-reference.md b/skills/autonomous-ai-agents/hermes-agent/references/cli-reference.md
+index f68b358c..0cc408dc 100644
+--- a/skills/autonomous-ai-agents/hermes-agent/references/cli-reference.md
++++ b/skills/autonomous-ai-agents/hermes-agent/references/cli-reference.md
+@@ -1,5 +1,23 @@
+ # Hermes CLI Reference
+ 
++## Managed deployment: choose the runtime first
++
++For this distribution, load `hermes-self-management` with `skill_view` before
++administering Hermes. Its deployment-specific routing takes precedence over the
++standalone commands and home paths below; native feature semantics still apply.
++The `terminal` tool runs in a separate SSH terminal, while the active profile state and
++Hermes process are in Kubernetes. From the project root in the terminal, use
++`python3 hermes.py runtime info`, then execute native administration through
++`python3 hermes.py runtime exec -- hermes --profile PROFILE ...`.
++Use the requested profile explicitly, including `default`. Native profile-aware
++tools and the connected UI already act on the runtime; do not wrap them again.
++If the skill or operations bridge is unavailable, report the missing dependency
++instead of administering a local installation. Paths such as `~/.hermes/config.yaml`
++in this reference describe native state in the runtime, not the SSH terminal project root.
++Desktop-local components belong to the user's Desktop installation; a backend
++plugin installation does not install its Desktop UI component.
++
++
+ Live sources when anything looks stale: `hermes --help`, `hermes <command> --help`,
+ https://hermes-agent.nousresearch.com/docs/reference/cli-commands
+ 
+diff --git a/skills/autonomous-ai-agents/hermes-agent/references/configuration.md b/skills/autonomous-ai-agents/hermes-agent/references/configuration.md
+index f8cb3aba..5948e3e5 100644
+--- a/skills/autonomous-ai-agents/hermes-agent/references/configuration.md
++++ b/skills/autonomous-ai-agents/hermes-agent/references/configuration.md
+@@ -1,5 +1,23 @@
+ # Configuration, Toolsets & Voice
+ 
++## Managed deployment: choose the runtime first
++
++For this distribution, load `hermes-self-management` with `skill_view` before
++administering Hermes. Its deployment-specific routing takes precedence over the
++standalone commands and home paths below; native feature semantics still apply.
++The `terminal` tool runs in a separate SSH terminal, while the active profile state and
++Hermes process are in Kubernetes. From the project root in the terminal, use
++`python3 hermes.py runtime info`, then execute native administration through
++`python3 hermes.py runtime exec -- hermes --profile PROFILE ...`.
++Use the requested profile explicitly, including `default`. Native profile-aware
++tools and the connected UI already act on the runtime; do not wrap them again.
++If the skill or operations bridge is unavailable, report the missing dependency
++instead of administering a local installation. Paths such as `~/.hermes/config.yaml`
++in this reference describe native state in the runtime, not the SSH terminal project root.
++Desktop-local components belong to the user's Desktop installation; a backend
++plugin installation does not install its Desktop UI component.
++
++
+ Edit with `hermes config edit` or `hermes config set section.key value`.
+ Full reference: https://hermes-agent.nousresearch.com/docs/user-guide/configuration
+ 
+diff --git a/skills/autonomous-ai-agents/hermes-agent/references/contributor-guide.md b/skills/autonomous-ai-agents/hermes-agent/references/contributor-guide.md
+index b23f07c1..da9fdd5e 100644
+--- a/skills/autonomous-ai-agents/hermes-agent/references/contributor-guide.md
++++ b/skills/autonomous-ai-agents/hermes-agent/references/contributor-guide.md
+@@ -1,5 +1,27 @@
+ # Contributor Quick Reference
+ 
++## Managed deployment: choose the runtime first
++
++For this distribution, load `hermes-self-management` with `skill_view` before
++administering Hermes. Its deployment-specific routing takes precedence over the
++standalone commands and home paths below; native feature semantics still apply.
++The `terminal` tool runs in a separate SSH terminal, while the active profile state and
++Hermes process are in Kubernetes. From the project root in the terminal, use
++`python3 hermes.py runtime info`, then execute native administration through
++`python3 hermes.py runtime exec -- hermes --profile PROFILE ...`.
++Use the requested profile explicitly, including `default`. Native profile-aware
++tools and the connected UI already act on the runtime; do not wrap them again.
++If the skill or operations bridge is unavailable, report the missing dependency
++instead of administering a local installation. Paths such as `~/.hermes/config.yaml`
++in this reference describe native state in the runtime, not the SSH terminal project root.
++Desktop-local components belong to the user's Desktop installation; a backend
++plugin installation does not install its Desktop UI component.
++
++Develop in the independent `hermes-agent/` source checkout in the terminal;
++export changes as grouped patches and deploy the resulting CI image. Editing
++that checkout does not change the running pod. Use an isolated development home.
++
++
+ For occasional contributors and PR authors. Full developer docs: https://hermes-agent.nousresearch.com/docs/developer-guide/
+ 
+ ### Project Layout
+diff --git a/skills/autonomous-ai-agents/hermes-agent/references/desktop-plugins.md b/skills/autonomous-ai-agents/hermes-agent/references/desktop-plugins.md
+index 6e3867ec..d1beef54 100644
+--- a/skills/autonomous-ai-agents/hermes-agent/references/desktop-plugins.md
++++ b/skills/autonomous-ai-agents/hermes-agent/references/desktop-plugins.md
+@@ -1,5 +1,23 @@
+ # Desktop App Plugins — UI Panes, Commands, Widgets
+ 
++## Managed deployment: choose the runtime first
++
++For this distribution, load `hermes-self-management` with `skill_view` before
++administering Hermes. Its deployment-specific routing takes precedence over the
++standalone commands and home paths below; native feature semantics still apply.
++The `terminal` tool runs in a separate SSH terminal, while the active profile state and
++Hermes process are in Kubernetes. From the project root in the terminal, use
++`python3 hermes.py runtime info`, then execute native administration through
++`python3 hermes.py runtime exec -- hermes --profile PROFILE ...`.
++Use the requested profile explicitly, including `default`. Native profile-aware
++tools and the connected UI already act on the runtime; do not wrap them again.
++If the skill or operations bridge is unavailable, report the missing dependency
++instead of administering a local installation. Paths such as `~/.hermes/config.yaml`
++in this reference describe native state in the runtime, not the SSH terminal project root.
++Desktop-local components belong to the user's Desktop installation; a backend
++plugin installation does not install its Desktop UI component.
++
++
+ Write plugins for the Hermes desktop app: statusbar items, layout panes,
+ command-palette commands, keybinds, routes, and themes. A plugin is a single
+ plain-JavaScript ESM file the app loads at runtime — no build step, no repo
+diff --git a/skills/autonomous-ai-agents/hermes-agent/references/native-mcp.md b/skills/autonomous-ai-agents/hermes-agent/references/native-mcp.md
+index 0fed2652..b7e76b09 100644
+--- a/skills/autonomous-ai-agents/hermes-agent/references/native-mcp.md
++++ b/skills/autonomous-ai-agents/hermes-agent/references/native-mcp.md
+@@ -1,5 +1,32 @@
+ # Native MCP Client
+ 
++## Managed deployment: choose the runtime first
++
++For this distribution, load `hermes-self-management` with `skill_view` before
++administering Hermes. Its deployment-specific routing takes precedence over the
++standalone commands and home paths below; native feature semantics still apply.
++The `terminal` tool runs in a separate SSH terminal, while the active profile state and
++Hermes process are in Kubernetes. From the project root in the terminal, use
++`python3 hermes.py runtime info`, then execute native administration through
++`python3 hermes.py runtime exec -- hermes --profile PROFILE ...`.
++Use the requested profile explicitly, including `default`. Native profile-aware
++tools and the connected UI already act on the runtime; do not wrap them again.
++If the skill or operations bridge is unavailable, report the missing dependency
++instead of administering a local installation. Paths such as `~/.hermes/config.yaml`
++in this reference describe native state in the runtime, not the SSH terminal project root.
++Desktop-local components belong to the user's Desktop installation; a backend
++plugin installation does not install its Desktop UI component.
++
++The MCP tools themselves remain native. Administration uses the operations
++bridge, and stdio packages execute in dedicated MCP pods selected by policy.
++Read the self-management structure reference before choosing
++`--hermes-executor=api|workspace|browser`; an unknown server requires an explicit
++choice based on its access needs. `vm` requires dedicated provisioning. HTTP
++servers remain remote endpoints subject to the deployment's network policy.
++The MCP SDK/PM commands below describe dependency requirements, not permission
++to change the read-only Hermes image or install MCP packages in the SSH terminal.
++
++
+ Hermes Agent has a built-in MCP client that connects to MCP servers at startup, discovers their tools, and makes them available as first-class tools the agent can call directly. No bridge CLI needed -- tools from MCP servers appear alongside built-in tools like `terminal`, `read_file`, etc.
+ 
+ ## When to Use
+diff --git a/skills/autonomous-ai-agents/hermes-agent/references/troubleshooting.md b/skills/autonomous-ai-agents/hermes-agent/references/troubleshooting.md
+index 7d76e6fa..2123a479 100644
+--- a/skills/autonomous-ai-agents/hermes-agent/references/troubleshooting.md
++++ b/skills/autonomous-ai-agents/hermes-agent/references/troubleshooting.md
+@@ -1,5 +1,23 @@
+ # Troubleshooting
+ 
++## Managed deployment: choose the runtime first
++
++For this distribution, load `hermes-self-management` with `skill_view` before
++administering Hermes. Its deployment-specific routing takes precedence over the
++standalone commands and home paths below; native feature semantics still apply.
++The `terminal` tool runs in a separate SSH terminal, while the active profile state and
++Hermes process are in Kubernetes. From the project root in the terminal, use
++`python3 hermes.py runtime info`, then execute native administration through
++`python3 hermes.py runtime exec -- hermes --profile PROFILE ...`.
++Use the requested profile explicitly, including `default`. Native profile-aware
++tools and the connected UI already act on the runtime; do not wrap them again.
++If the skill or operations bridge is unavailable, report the missing dependency
++instead of administering a local installation. Paths such as `~/.hermes/config.yaml`
++in this reference describe native state in the runtime, not the SSH terminal project root.
++Desktop-local components belong to the user's Desktop installation; a backend
++plugin installation does not install its Desktop UI component.
++
++
+ ### Voice not working
+ 1. Check `stt.enabled: true` in config.yaml
+ 2. Verify provider: `python -c "import pm; pm.sync_venv(['stt-whisper'], explicit=True)"` or set API key
+diff --git a/skills/software-development/hermes-agent-skill-authoring/SKILL.md b/skills/software-development/hermes-agent-skill-authoring/SKILL.md
+index 1d39a900..e843a39f 100644
+--- a/skills/software-development/hermes-agent-skill-authoring/SKILL.md
++++ b/skills/software-development/hermes-agent-skill-authoring/SKILL.md
+@@ -13,6 +13,33 @@ metadata:
+ 
+ # Authoring Hermes-Agent Skills (in-repo)
+ 
++## Managed deployment: choose the runtime first
++
++For this distribution, load `hermes-self-management` with `skill_view` before
++administering Hermes. Its deployment-specific routing takes precedence over the
++standalone commands and home paths below; native feature semantics still apply.
++The `terminal` tool runs in a separate SSH terminal, while the active profile state and
++Hermes process are in Kubernetes. From the project root in the terminal, use
++`python3 hermes.py runtime info`, then execute native administration through
++`python3 hermes.py runtime exec -- hermes --profile PROFILE ...`.
++Use the requested profile explicitly, including `default`. Native profile-aware
++tools and the connected UI already act on the runtime; do not wrap them again.
++If the skill or operations bridge is unavailable, report the missing dependency
++instead of administering a local installation. Paths such as `~/.hermes/config.yaml`
++in this reference describe native state in the runtime, not the SSH terminal project root.
++Desktop-local components belong to the user's Desktop installation; a backend
++plugin installation does not install its Desktop UI component.
++
++Personal skills are created with `skill_manage` in the active runtime profile
++and projected to `customizations/<profile>/skills/` in the deployment repository.
++Distribution skills live in the public distribution's `skills/`, governed by
++`project-files.json`. These are different from bundled upstream skills under
++`hermes-agent/skills/`: changes to those require `scripts/export_patch.py` and
++`patches/series.json`, because the independent source checkout is not committed
++into the deployment repository. Read `hermes-self-management` for the complete
++source/build/publication workflow before using the in-repo instructions below.
++
++
+ ## Overview
+ 
+ There are two places a SKILL.md can live:

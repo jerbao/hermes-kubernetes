@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "groups": [
+    {
+      "path": "patches/0001-runtime-almalinux.patch",
+      "description": "Imagem AlmaLinux x86-64-v2 e dependências do runtime",
+      "files": [
+        "Dockerfile",
+        "pm/lock.json"
+      ],
+      "native_tests": []
+    },
+    {
+      "path": "patches/0002-ssh-terminal.patch",
+      "description": "Transporte SSH, sincronização de arquivos e isolamento por perfil",
+      "files": [
+        "tools/environments/file_sync.py",
+        "tools/environments/ssh.py",
+        "tests/tools/test_ssh_command_batches.py",
+        "tests/tools/test_ssh_profile_sync.py",
+        "tests/tools/test_ssh_return_scope.py"
+      ],
+      "native_tests": [
+        "tests/tools/test_ssh_command_batches.py",
+        "tests/tools/test_ssh_bulk_upload.py",
+        "tests/tools/test_ssh_environment.py",
+        "tests/tools/test_file_sync.py",
+        "tests/tools/test_ssh_return_scope.py",
+        "tests/tools/test_ssh_profile_sync.py"
+      ]
+    },
+    {
+      "path": "patches/0003-anthropic-usage.patch",
+      "description": "Contabilização nativa de tokens e cache Anthropic no adaptador auxiliar",
+      "files": [
+        "agent/auxiliary_client.py",
+        "tests/agent/test_anthropic_auxiliary_usage.py"
+      ],
+      "native_tests": [
+        "tests/agent/test_anthropic_auxiliary_usage.py",
+        "tests/agent/test_auxiliary_client_anthropic_custom.py",
+        "tests/agent/test_moa_slot_api_mode.py"
+      ]
+    },
+    {
+      "path": "patches/0004-mcp-stdio-executor.patch",
+      "description": "Executor stdio externo e transporte do catálogo MCP na API da interface",
+      "files": [
+        "hermes_cli/config_defaults.py",
+        "tools/mcp_tool.py",
+        "tools/mcp_tool_executor.py",
+        "tools/mcp_tool_transport.py",
+        "tui_gateway/methods_tools.py",
+        "tests/tools/test_mcp_stdio_executor.py",
+        "tests/tui_gateway/test_mcp_catalog_rpc_transport.py"
+      ],
+      "native_tests": [
+        "tests/tools/test_mcp_stdio_executor.py",
+        "tests/tui_gateway/test_mcp_catalog_rpc_transport.py"
+      ]
+    },
+    {
+      "path": "patches/0005-managed-skills.patch",
+      "description": "Skills oficiais adaptadas ao runtime separado e à autogerência via ponte",
+      "files": [
+        "skills/autonomous-ai-agents/hermes-agent/SKILL.md",
+        "skills/software-development/hermes-agent-skill-authoring/SKILL.md",
+        "skills/autonomous-ai-agents/hermes-agent/references/cli-reference.md",
+        "skills/autonomous-ai-agents/hermes-agent/references/configuration.md",
+        "skills/autonomous-ai-agents/hermes-agent/references/native-mcp.md",
+        "skills/autonomous-ai-agents/hermes-agent/references/contributor-guide.md",
+        "skills/autonomous-ai-agents/hermes-agent/references/troubleshooting.md",
+        "skills/autonomous-ai-agents/hermes-agent/references/desktop-plugins.md"
+      ],
+      "native_tests": []
+    }
+  ]
+}

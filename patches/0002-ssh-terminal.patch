@@ -1,0 +1,628 @@
+diff --git a/tests/tools/test_ssh_command_batches.py b/tests/tools/test_ssh_command_batches.py
+new file mode 100644
+index 00000000..a1e89119
+--- /dev/null
++++ b/tests/tools/test_ssh_command_batches.py
+@@ -0,0 +1,57 @@
++"""Large skill collections must fit SSH exec limits without losing files."""
++import subprocess
++from pathlib import Path
++
++import pytest
++
++from tools.environments.ssh import SSHEnvironment
++
++
++@pytest.fixture
++def shell_environment(tmp_path):
++    remote_home = tmp_path / 'remote'
++    (remote_home / '.hermes').mkdir(parents=True)
++    environment = SSHEnvironment.__new__(SSHEnvironment)
++    environment.host = 'local-test'
++    environment._remote_home = str(remote_home)
++    environment._build_ssh_command = lambda: ['bash', '-c']
++
++    def run(command, timeout):
++        # A remote command is one argv string; Linux caps each string at 128 KiB.
++        # Leave room for SSH options and UTF-8 expansion on other hosts as well.
++        assert len(command.encode('utf-8')) <= 32768
++        return subprocess.run(['bash', '-c', command], timeout=timeout,
++                              capture_output=True, text=True)
++
++    environment._run_ssh = run
++    return environment
++
++
++def paths(environment):
++    base = Path(environment._remote_home) / '.hermes' / 'skills'
++    return [str(base / (f"skill {i:04d} ' ação " + 'x' * 90) / 'SKILL.md')
++            for i in range(1800)]
++
++
++@pytest.mark.platforms('posix')
++def test_large_bulk_upload_preserves_every_file(shell_environment, tmp_path):
++    source = tmp_path / 'content'
++    content = b'large-skill-collection\x00\xff'
++    source.write_bytes(content)
++    destinations = paths(shell_environment)
++    shell_environment._ssh_bulk_upload([(str(source), p) for p in destinations])
++    assert all(Path(p).read_bytes() == content for p in destinations)
++
++
++@pytest.mark.platforms('posix')
++def test_large_delete_removes_only_requested_files(shell_environment):
++    destinations = paths(shell_environment)
++    for name in destinations:
++        target = Path(name)
++        target.parent.mkdir(parents=True)
++        target.write_bytes(b'old')
++    retained = Path(shell_environment._remote_home) / '.hermes' / 'keep.txt'
++    retained.write_bytes(b'keep')
++    shell_environment._ssh_delete(destinations)
++    assert all(not Path(p).exists() for p in destinations)
++    assert retained.read_bytes() == b'keep'
+diff --git a/tests/tools/test_ssh_profile_sync.py b/tests/tools/test_ssh_profile_sync.py
+new file mode 100644
+index 00000000..c7034ba4
+--- /dev/null
++++ b/tests/tools/test_ssh_profile_sync.py
+@@ -0,0 +1,90 @@
++"""A shared SSH account must keep named profiles' file sync independent."""
++import subprocess
++from pathlib import Path
++
++import pytest
++
++from hermes_constants import reset_hermes_home_override, set_hermes_home_override
++from tools.environments.ssh import SSHEnvironment
++
++
++class ShellSSH(SSHEnvironment):
++    def __init__(self, remote):
++        self.remote = remote
++        super().__init__('local-test-transport', 'fixture')
++
++    def _establish_connection(self):
++        pass
++
++    def _detect_remote_home(self):
++        return str(self.remote)
++
++    def _build_ssh_command(self, **kwargs):
++        return ['bash', '-c']
++
++    def _run_ssh(self, command, timeout=10):
++        return subprocess.run(['bash', '-c', command], capture_output=True, text=True, timeout=timeout)
++
++    def init_session(self):
++        pass
++
++    def _control_sockets(self):
++        return []
++
++
++def seed(home, value):
++    (home / 'skills/owned').mkdir(parents=True)
++    (home / 'config.yaml').write_text('terminal: {backend: ssh, sync_back_scope: mapped}\n')
++    (home / 'skills/owned/SKILL.md').write_text(value)
++
++
++@pytest.mark.platforms('linux')
++def test_named_profiles_keep_same_named_skills_and_cleanup_in_the_owning_scope(tmp_path, monkeypatch):
++    root = tmp_path / 'host/.hermes'
++    remote = tmp_path / 'vm'
++    remote.mkdir()
++    monkeypatch.setenv('HOME', str(root.parent))
++    monkeypatch.setenv('HERMES_HOME', str(root))
++    monkeypatch.setattr(Path, 'home', lambda: root.parent)
++    seed(root, 'root untouched')
++    profiles = [root / 'profiles/lima', root / 'profiles/pesquisa']
++    environments = []
++    for home in profiles:
++        seed(home, home.name)
++        token = set_hermes_home_override(home)
++        try:
++            environments.append(ShellSSH(remote))
++        finally:
++            reset_hermes_home_override(token)
++    for home in profiles:
++        target = remote / '.hermes/profiles' / home.name / 'skills/owned/SKILL.md'
++        assert target.read_text() == home.name
++        target.write_text('returned-' + home.name)
++    # A cleanup callback may run while a different profile is active.
++    token = set_hermes_home_override(profiles[1])
++    try:
++        environments[0].cleanup()
++    finally:
++        reset_hermes_home_override(token)
++    environments[1].cleanup()
++    assert (root / 'skills/owned/SKILL.md').read_text() == 'root untouched'
++    for home in profiles:
++        assert (home / 'skills/owned/SKILL.md').read_text() == 'returned-' + home.name
++    assert not (remote / '.hermes/skills/owned/SKILL.md').exists()
++
++
++@pytest.mark.platforms('linux')
++def test_default_profile_keeps_the_original_remote_home(tmp_path, monkeypatch):
++    root = tmp_path / 'host/.hermes'
++    remote = tmp_path / 'vm'
++    remote.mkdir()
++    monkeypatch.setenv('HOME', str(root.parent))
++    monkeypatch.setenv('HERMES_HOME', str(root))
++    monkeypatch.setattr(Path, 'home', lambda: root.parent)
++    seed(root, 'root')
++    environment = ShellSSH(remote)
++    target = remote / '.hermes/skills/owned/SKILL.md'
++    assert target.read_text() == 'root'
++    target.write_text('returned-root')
++    environment.cleanup()
++    assert (root / 'skills/owned/SKILL.md').read_text() == 'returned-root'
+diff --git a/tests/tools/test_ssh_return_scope.py b/tests/tools/test_ssh_return_scope.py
+new file mode 100644
+index 00000000..a4b7c779
+--- /dev/null
++++ b/tests/tools/test_ssh_return_scope.py
+@@ -0,0 +1,162 @@
++"""SSH return archives preserve the native mapping without copying installations."""
++import tarfile
++
++import pytest
++
++from tools.environments import file_sync, ssh
++from tools.environments.file_sync import FileSyncManager
++
++
++def environment(root, manager):
++    result = ssh.SSHEnvironment.__new__(ssh.SSHEnvironment)
++    result.host = "fixture"
++    result._remote_home = str(root.parent)
++    result._sync_manager = manager
++    result._build_ssh_command = lambda *args, **kwargs: ["bash", "-c"]
++    return result
++
++
++def setup_manager(home, remote, monkeypatch):
++    (home / "skills").mkdir(parents=True)
++    (home / "cache").mkdir()
++    credential = home / "credential"
++    credential.write_text("local-private-fixture")
++    (home / "skills/index.md").write_text("local index")
++    (home / "cache/index.md").write_text("local cache")
++    mapping = [(str(home / "skills/index.md"), str(remote / "skills/index.md")),
++               (str(home / "cache/index.md"), str(remote / "cache/index.md")),
++               (str(credential), str(remote / "credential"))]
++    monkeypatch.setattr(file_sync, "_credential_host_paths", lambda: {str(credential.resolve())})
++    manager = FileSyncManager(lambda: mapping, lambda *args: None, lambda *args: None)
++    backend = environment(remote, manager)
++    manager._bulk_download_fn = backend._ssh_bulk_download
++    return manager, backend
++
++
++@pytest.mark.platforms("linux")
++def test_mapped_return_matches_full_return_with_new_files_and_relative_link_dependencies(tmp_path, monkeypatch):
++    from hermes_cli import config
++
++    remote = tmp_path / "remote/.hermes"
++    (remote / "skills/new/references").mkdir(parents=True)
++    (remote / "cache").mkdir()
++    (remote / "hermes-agent").mkdir()
++    (remote / "skills/index.md").write_text("remote index")
++    (remote / "skills/new/SKILL.md").write_text("new skill")
++    (remote / "skills/new/references/binary").write_bytes(bytes(range(256)) * 32)
++    (remote / "cache/index.md").write_text("remote cache")
++    (remote / "cache/new.data").write_bytes(b"new cache data")
++    (remote / "credential").write_text("remote must not replace credential")
++    (remote / "hermes-agent/documents").mkdir()
++    (remote / "hermes-agent/documents/reference.txt").write_text("relative dependency")
++    (remote / "hermes-agent/reference-dir").symlink_to("documents", target_is_directory=True)
++    (remote / "skills/reference.txt").symlink_to("../hermes-agent/reference-dir/reference.txt")
++    (remote / "hermes-agent/installation.bin").write_bytes(b"installation" * 10000)
++    states, sizes = {}, {}
++    for scope in ("full", "mapped"):
++        home = tmp_path / scope
++        manager, backend = setup_manager(home, remote, monkeypatch)
++        monkeypatch.setattr(config, "load_config_readonly", lambda: {"terminal": {"sync_back_scope": scope}})
++        archive = tmp_path / (scope + ".tar")
++        backend._ssh_bulk_download(archive)
++        sizes[scope] = archive.stat().st_size
++        manager._sync_back_impl()
++        states[scope] = {str(p.relative_to(home)): p.read_bytes() for p in home.rglob("*") if p.is_file()}
++        assert states[scope]["credential"] == b"local-private-fixture"
++        assert states[scope]["skills/new/SKILL.md"] == b"new skill"
++        assert states[scope]["skills/reference.txt"] == b"relative dependency"
++        assert states[scope]["cache/new.data"] == b"new cache data"
++    assert states["mapped"] == states["full"]
++    assert sizes["mapped"] < sizes["full"]
++    with tarfile.open(tmp_path / "mapped.tar") as archive:
++        assert not any(e.name.endswith("installation.bin") for e in archive)
++
++
++@pytest.mark.platforms("linux")
++def test_mapped_return_keeps_unmapped_venv_on_remote_and_rejects_mapped_escaping_link(tmp_path, monkeypatch):
++    from hermes_cli import config
++
++    remote = tmp_path / "remote/.hermes"
++    (remote / "skills").mkdir(parents=True)
++    (remote / "cache").mkdir()
++    (remote / "hermes-agent/.venv/bin").mkdir(parents=True)
++    (remote / "hermes-agent/.venv/bin/python").symlink_to("/usr/bin/python3")
++    (remote / "skills/index.md").write_text("remote skill")
++    (remote / "cache/index.md").write_text("cache")
++    (remote / "credential").write_text("fixture")
++    home = tmp_path / "host"
++    manager, backend = setup_manager(home, remote, monkeypatch)
++    monkeypatch.setattr(config, "load_config_readonly", lambda: {"terminal": {"sync_back_scope": "mapped"}})
++    manager._sync_back_impl()
++    assert (home / "skills/index.md").read_text() == "remote skill"
++    assert (remote / "hermes-agent/.venv/bin/python").is_symlink()
++    assert not (home / "hermes-agent").exists()
++    before = (home / "skills/index.md").read_bytes()
++    (remote / "skills/index.md").write_text("must not be partially applied")
++    (remote / "skills/escape").symlink_to("/etc/passwd")
++    with pytest.raises(tarfile.FilterError):
++        manager._sync_back_impl()
++    assert (home / "skills/index.md").read_bytes() == before
++
++
++@pytest.mark.platforms("linux")
++def test_return_uses_one_mapping_snapshot_and_does_not_follow_external_directory(tmp_path, monkeypatch):
++    from hermes_cli import config
++
++    remote = tmp_path / "remote/.hermes"
++    (remote / "cache").mkdir(parents=True)
++    (remote / "cache/index.md").write_text("cache")
++    external = tmp_path / "external"
++    external.mkdir()
++    (external / "index.md").write_text("must not be transported")
++    (remote / "skills").symlink_to(external, target_is_directory=True)
++    home = tmp_path / "host"
++    manager, backend = setup_manager(home, remote, monkeypatch)
++    mapping = manager._get_files_fn()
++    calls = []
++
++    def enumerate_once():
++        calls.append(True)
++        assert len(calls) == 1
++        return mapping
++
++    manager._get_files_fn = enumerate_once
++    monkeypatch.setattr(config, "load_config_readonly", lambda: {"terminal": {"sync_back_scope": "mapped"}})
++    with pytest.raises(tarfile.FilterError):
++        manager._sync_back_impl()
++    assert len(calls) == 1
++    assert manager._return_file_mapping is None
++    assert (home / "skills/index.md").read_text() == "local index"
++
++
++@pytest.mark.platforms("linux")
++def test_unmapped_external_directory_link_stays_on_vm_without_breaking_file_return(tmp_path, monkeypatch):
++    from hermes_cli import config
++
++    remote = tmp_path / "remote/.hermes"
++    (remote / "skills").mkdir(parents=True)
++    (remote / "cache").mkdir()
++    external = remote.parent / "external"
++    external.mkdir()
++    (external / "private.txt").write_text("external fixture must not be copied")
++    (remote / "skills/directory").symlink_to("../../external", target_is_directory=True)
++    (remote / "skills/index.md").write_text("returned index")
++    (remote / "cache/index.md").write_text("cache")
++    home = tmp_path / "host"
++    manager, backend = setup_manager(home, remote, monkeypatch)
++    monkeypatch.setattr(config, "load_config_readonly", lambda: {"terminal": {"sync_back_scope": "mapped"}})
++    manager._sync_back_impl()
++    assert (home / "skills/index.md").read_text() == "returned index"
++    assert not (home / "skills/directory").exists()
++    assert (remote / "skills/directory/private.txt").read_text() == "external fixture must not be copied"
++    # A materialized skill in the host snapshot explicitly maps this branch.
++    (external / "index.md").write_text("mapped external skill")
++    (home / "skills/directory").mkdir()
++    (home / "skills/directory/index.md").write_text("host copy")
++    mapping = manager._get_files_fn()
++    mapping.append((str(home / "skills/directory/index.md"), str(remote / "skills/directory/index.md")))
++    manager._get_files_fn = lambda: mapping
++    manager._sync_back_impl()
++    assert (home / "skills/directory/index.md").read_text() == "mapped external skill"
++    assert (home / "skills/directory/private.txt").read_text() == "external fixture must not be copied"
++    assert (remote / "skills/directory").is_symlink()
+diff --git a/tools/environments/file_sync.py b/tools/environments/file_sync.py
+index 5d12756c..21d2abec 100644
+--- a/tools/environments/file_sync.py
++++ b/tools/environments/file_sync.py
+@@ -199,6 +199,7 @@ class FileSyncManager:
+         bulk_upload_fn: BulkUploadFn | None = None,
+         bulk_download_fn: BulkDownloadFn | None = None):
+         self._get_files_fn = get_files_fn
++        self._return_file_mapping = None
+         self._upload_fn = upload_fn
+         self._bulk_upload_fn = bulk_upload_fn
+         self._bulk_download_fn = bulk_download_fn
+@@ -375,6 +376,28 @@ class FileSyncManager:
+                 pass
+             lock_fd.close()
+ 
++    def return_remote_paths(self) -> list[str]:
++        """Native mapped files eligible for return, excluding upload-only credentials."""
++        mapping = self._return_file_mapping
++        if mapping is None:
++            mapping = list(self._get_files_fn())
++        upload_only = self._upload_only_host_paths | _credential_host_paths()
++        return [remote for host, remote in mapping
++                if not self._is_upload_only_host_path(host, upload_only)]
++
++    def return_directory_prefixes(self) -> list[str]:
++        """Directories eligible for return under the same mapping used when applying it.
++
++        Descendants include new files, not just files enumerated before the download.
++        Credential-only mappings must not broaden the selection to the whole home.
++        """
++        directories = sorted({posixpath.dirname(remote) for remote in self.return_remote_paths()}, key=len)
++        prefixes = []
++        for directory in directories:
++            if not any(directory == parent or directory.startswith(parent + "/") for parent in prefixes):
++                prefixes.append(directory)
++        return prefixes
++
+     def _sync_back_impl(self) -> None:
+         """Download, diff, and apply remote changes to host."""
+         if self._bulk_download_fn is None:
+@@ -395,7 +418,11 @@ class FileSyncManager:
+         fd, tar_path = tempfile.mkstemp(prefix=_sync_back_temp_prefix(), suffix=".tar")
+         os.close(fd)
+         try:
+-            self._bulk_download_fn(Path(tar_path))
++            self._return_file_mapping = file_mapping
++            try:
++                self._bulk_download_fn(Path(tar_path))
++            finally:
++                self._return_file_mapping = None
+ 
+             # A misbehaving sandbox could produce an arbitrarily large tar.
+             try:
+diff --git a/tools/environments/ssh.py b/tools/environments/ssh.py
+index 3a9f2907..d03d65c9 100644
+--- a/tools/environments/ssh.py
++++ b/tools/environments/ssh.py
+@@ -2,6 +2,7 @@
+ 
+ import contextlib
+ import hashlib
++import json
+ import logging
+ import os
+ import shlex
+@@ -9,7 +10,7 @@ import shutil
+ import subprocess
+ import tempfile
+ from pathlib import Path
+-from typing import Iterable
++from typing import Callable, Iterable
+ 
+ from tools.environments.base import BaseEnvironment, EnvironmentConnectionError
+ from tools.environments.base_output import _popen_bash
+@@ -24,11 +25,86 @@ logger = logging.getLogger(__name__)
+ # fail the connection outright ('getsockname failed: Not a socket'). Skip multiplexing there.
+ # Skip multiplexing there; each command pays a fresh connection but the backend works. See #73927.
+ _SSH_MULTIPLEX = os.name != "nt"
++# Leave room for SSH flags and quoting within Windows' 32 KiB command line.
++_SSH_PATH_COMMAND_MAX_BYTES = 16 * 1024
+ 
+ # Module-level binding: tests patch ``ssh._load_hermes_env_vars`` to fake the .env file.
+ _load_hermes_env_vars = load_hermes_env_vars
+ 
+ 
++# A mapped return preserves the native file view, including relative directory
++# aliases already represented as files in a host snapshot. Names remain under
++# the remote home; file links are checked by the unchanged extraction filter.
++_MAPPED_RETURN_SCRIPT = r"""
++import json, os, stat, sys, tarfile
++
++request = json.load(sys.stdin)
++root = os.path.abspath(request["root"])
++pending = [(path, path, False, (), False) for path in request["prefixes"]]
++mapped = set(request["mapped_files"])
++members = {}
++
++def contained(path):
++    return path == root or path.startswith(root + "/")
++
++def first_link(path):
++    parent = root
++    for component in ["", *os.path.relpath(path, root).split(os.sep)]:
++        if component and component != ".":
++            parent = os.path.join(parent, component)
++        if os.path.islink(parent):
++            return parent
++    return path
++
++while pending:
++    path, name, dependency, ancestry, materialized = pending.pop()
++    path, name = os.path.abspath(path), os.path.abspath(name)
++    if not contained(name):
++        continue
++    if not materialized:
++        path = name = first_link(path)
++    if name in members or os.path.basename(name).endswith(".sock"):
++        continue
++    try:
++        info = os.lstat(path)
++    except FileNotFoundError:
++        continue
++    if stat.S_ISLNK(info.st_mode) and os.path.isdir(path):
++        # Native uploads ignore directory links. Return only branches explicitly
++        # mapped as files, or required by a relative file-link dependency.
++        anchored = dependency or any(remote == name or remote.startswith(name + "/") for remote in mapped)
++        if not anchored:
++            continue
++        if not os.path.isabs(os.readlink(path)):
++            # A snapshot materializes a relative directory alias. Recreate that
++            # same file view in the archive without changing the alias on the VM.
++            path = os.path.realpath(path)
++            info = os.stat(path)
++            materialized = True
++    members[name] = path
++    if stat.S_ISLNK(info.st_mode):
++        target = os.readlink(path)
++        if not os.path.isabs(target):
++            target_path = os.path.abspath(os.path.join(os.path.dirname(path), target))
++            target_name = os.path.abspath(os.path.join(os.path.dirname(name), target))
++            if contained(target_name):
++                pending.append((target_path, target_name, True, ancestry, materialized))
++    elif stat.S_ISDIR(info.st_mode):
++        identity = (info.st_dev, info.st_ino)
++        if identity in ancestry:
++            raise RuntimeError("Mapped return contains a directory-link cycle")
++        with os.scandir(path) as entries:
++            pending.extend((entry.path, os.path.join(name, entry.name), dependency,
++                            (*ancestry, identity), materialized) for entry in entries)
++
++# Virtual member names stay in .hermes even when a mapped relative alias resolves
++# elsewhere on the VM. File symlinks retain their type for the native data filter.
++with tarfile.open(fileobj=sys.stdout.buffer, mode="w|", format=tarfile.PAX_FORMAT) as archive:
++    for name, path in sorted(members.items()):
++        archive.add(path, arcname=name.lstrip("/"), recursive=False)
++"""
++
++
+ def _ensure_ssh_available() -> None:
+     """Fail fast with a clear error when the SSH client is unavailable."""
+     for tool in ("ssh", "scp"):
+@@ -78,11 +154,17 @@ class SSHEnvironment(BaseEnvironment):
+             return
+         self._remote_home_detected = False
+         self._remote_home = self._detect_remote_home()
++        from hermes_constants import get_hermes_home
++        from hermes_cli.profiles import get_active_profile_name
++
++        self._sync_home = get_hermes_home()
++        profile = get_active_profile_name()
++        self._sync_profile = profile if profile not in ("default", "custom") else None
+         self._sync_manager = None
+         if sync_files:
+             self._ensure_remote_dirs()
+             self._sync_manager = FileSyncManager(
+-                get_files_fn=lambda: iter_sync_files(f"{self._remote_home}/.hermes"),
++                get_files_fn=self._sync_file_mapping,
+                 upload_fn=self._scp_upload, delete_fn=self._ssh_delete,
+                 bulk_upload_fn=self._ssh_bulk_upload, bulk_download_fn=self._ssh_bulk_download)
+             self._sync_manager.sync(force=True)
+@@ -134,6 +216,20 @@ class SSHEnvironment(BaseEnvironment):
+         if result.returncode != 0:
+             raise _sync_error(f"{reason}: {result.stderr.strip()}", subject)
+ 
++    def _run_path_batches(self, paths: list[str], build_command: Callable[[list[str]], str],
++                          timeout: float, reason: str, subject: str) -> None:
++        """Keep each SSH exec argument below OS limits, including UTF-8 paths."""
++        batch = []
++        for path in paths:
++            candidate = [*batch, path]
++            if batch and len(build_command(candidate).encode("utf-8")) > _SSH_PATH_COMMAND_MAX_BYTES:
++                self._run_ssh_checked(build_command(batch), timeout, reason, subject)
++                batch = [path]
++            else:
++                batch = candidate
++        if batch:
++            self._run_ssh_checked(build_command(batch), timeout, reason, subject)
++
+     def _establish_connection(self):
+         try:
+             result = self._run_ssh("echo 'SSH connection established'", timeout=15)
+@@ -160,9 +256,28 @@ class SSHEnvironment(BaseEnvironment):
+                 return result.stdout.strip()
+         return "/root" if self.user == "root" else f"/home/{self.user}"
+ 
++    def _sync_base(self) -> str:
++        base = f"{self._remote_home}/.hermes"
++        profile = getattr(self, "_sync_profile", None)
++        return f"{base}/profiles/{profile}" if profile else base
++
++    @contextlib.contextmanager
++    def _own_sync_home(self):
++        from hermes_constants import get_hermes_home, reset_hermes_home_override, set_hermes_home_override
++
++        token = set_hermes_home_override(getattr(self, "_sync_home", get_hermes_home()))
++        try:
++            yield
++        finally:
++            reset_hermes_home_override(token)
++
++    def _sync_file_mapping(self):
++        with self._own_sync_home():
++            return iter_sync_files(self._sync_base())
++
+     def _ensure_remote_dirs(self) -> None:
+         """Create base ~/.hermes directory tree on remote in one SSH call."""
+-        base = f"{self._remote_home}/.hermes"
++        base = self._sync_base()
+         self._run_ssh(quoted_mkdir_command([base, f"{base}/skills", f"{base}/credentials", f"{base}/cache"]),
+                       timeout=10)
+ 
+@@ -180,11 +295,11 @@ class SSHEnvironment(BaseEnvironment):
+         connection to remote ``tar x``, after a single batched ``mkdir -p``."""
+         if not files:
+             return
+-        base = f"{self._remote_home}/.hermes"
++        base = self._sync_base()
+         parents = unique_parent_dirs(files)
+         if parents:
+-            self._run_ssh_checked(quoted_mkdir_command(parents), 30, "remote mkdir failed",
+-                                  f"Remote directory setup on {self.host}")
++            self._run_path_batches(parents, quoted_mkdir_command, 30, "remote mkdir failed",
++                                   f"Remote directory setup on {self.host}")
+ 
+         # Symlink staging avoids fragile GNU tar --transform rules. On Windows
+         # without Developer Mode symlink creation raises OSError winerror 1314;
+@@ -247,14 +362,28 @@ class SSHEnvironment(BaseEnvironment):
+         """Download remote .hermes/ as a tar archive."""
+         # Tar from / with the full path so archive entries keep absolute paths
+         # (home/user/.hermes/skills/f.py), matching _pushed_hashes keys.
+-        rel_base = f"{self._remote_home}/.hermes".lstrip("/")
++        rel_base = self._sync_base().lstrip("/")
+         # Live sockets inside .hermes (gateway.sock and friends) cannot be archived: tar prints
+         # "socket ignored" and some builds exit 2, which failed every sync-back and left a
+         # multi-GB temp tar behind on each retry. Exclude them up front.
+-        ssh_cmd = self._build_ssh_command() + [
+-            f"tar cf - --exclude='*.sock' -C / {shlex.quote(rel_base)}"]
++        from hermes_cli.config import load_config_readonly
++
++        with self._own_sync_home():
++            scope = ((load_config_readonly() or {}).get("terminal") or {}).get("sync_back_scope", "full")
++        if scope not in ("full", "mapped"):
++            raise ValueError("terminal.sync_back_scope must be full or mapped")
++        command = f"tar cf - --exclude='*.sock' -C / {shlex.quote(rel_base)}"
++        transfer = {"stdin": subprocess.DEVNULL}
++        if scope == "mapped":
++            if self._sync_manager is None:
++                raise RuntimeError("Mapped return requires the native file sync manager")
++            command = "python3 -c " + shlex.quote(_MAPPED_RETURN_SCRIPT)
++            transfer = {"input": json.dumps({"root": "/" + rel_base,
++                         "prefixes": self._sync_manager.return_directory_prefixes(),
++                         "mapped_files": self._sync_manager.return_remote_paths()}).encode()}
++        ssh_cmd = self._build_ssh_command() + [command]
+         with open(dest, "wb") as f:
+-            result = subprocess.run(ssh_cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.PIPE, timeout=120)
++            result = subprocess.run(ssh_cmd, **transfer, stdout=f, stderr=subprocess.PIPE, timeout=120)
+         if result.returncode != 0:
+             stderr = result.stderr.decode(errors="replace").strip()
+             # A socket not named *.sock is the only rc=2 we knowingly accept, and only when
+@@ -268,8 +397,8 @@ class SSHEnvironment(BaseEnvironment):
+                                   f"File sync from {self.host}")
+ 
+     def _ssh_delete(self, remote_paths: list[str]) -> None:
+-        self._run_ssh_checked(quoted_rm_command(remote_paths), 10, "remote rm failed",
+-                              f"Remote file cleanup on {self.host}")
++        self._run_path_batches(remote_paths, quoted_rm_command, 10, "remote rm failed",
++                               f"Remote file cleanup on {self.host}")
+ 
+     def _before_execute(self) -> None:
+         if self._sync_manager is not None:
+@@ -290,7 +419,8 @@ class SSHEnvironment(BaseEnvironment):
+     def cleanup(self):
+         if self._sync_manager:
+             logger.info("SSH: syncing files from sandbox...")
+-            self._sync_manager.sync_back()
++            with self._own_sync_home():
++                self._sync_manager.sync_back()
+         for socket in self._control_sockets():
+             if not socket.exists():
+                 continue

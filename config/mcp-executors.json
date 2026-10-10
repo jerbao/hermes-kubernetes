@@ -1,0 +1,624 @@
+{
+  "schema": 1,
+  "source": "hermes-agent optional-mcps manifests, MCP presets and personal executor package registry",
+  "defaults": {
+    "http": "api",
+    "stdio": "api"
+  },
+  "catalog": {
+    "airtable": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.airtable.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "algolia": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.algolia.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "alltrails": {
+      "transport": "http",
+      "identity": {
+        "url": "https://www.alltrails.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "amplitude": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.amplitude.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "asana": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.asana.com/v2/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "atlassian": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.atlassian.com/v1/mcp/authv2"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "attio": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.attio.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "aws-knowledge": {
+      "transport": "http",
+      "identity": {
+        "url": "https://knowledge-mcp.global.api.aws"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "betterstack": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.betterstack.com"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "buildkite": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.buildkite.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "calendly": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.calendly.com"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "canva": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.canva.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "circleci": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.circleci.com/v1/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "clickup": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.clickup.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "close": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.close.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "cloudflare": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.cloudflare.com/mcp?codemode=false"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "cloudinary": {
+      "transport": "http",
+      "identity": {
+        "url": "https://asset-management.mcp.cloudinary.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "comfy-cloud": {
+      "transport": "http",
+      "identity": {
+        "url": "https://cloud.comfy.org/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "context7": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.context7.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "craft": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.craft.do/my/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "datadog": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.datadoghq.com/api/unstable/mcp-server/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "deepwiki": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.deepwiki.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "dropbox": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.dropbox.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "figma": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.figma.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "fireflies": {
+      "transport": "http",
+      "identity": {
+        "url": "https://api.fireflies.ai/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "gamma": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.gamma.app/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "gitlab": {
+      "transport": "http",
+      "identity": {
+        "url": "https://gitlab.com/api/v4/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "globalping": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.globalping.dev/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "grafana": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.grafana.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "hugging_face": {
+      "transport": "http",
+      "identity": {
+        "url": "https://huggingface.co/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "indeed": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.indeed.com/claude/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "intercom": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.intercom.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "kiwi": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.kiwi.com"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "klaviyo": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.klaviyo.com/mcp?core-tools-only=true&disable-tools-with-user-generated-content=true"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "linear": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.linear.app/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "microsoft-learn": {
+      "transport": "http",
+      "identity": {
+        "url": "https://learn.microsoft.com/api/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "miro": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.miro.com/"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "mixpanel": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.mixpanel.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "monday": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.monday.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "motherduck": {
+      "transport": "http",
+      "identity": {
+        "url": "https://api.motherduck.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "n8n-official": {
+      "transport": "http",
+      "identity": {
+        "url": "${N8N_MCP_SERVER_URL}"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "neon": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.neon.tech/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "netlify": {
+      "transport": "http",
+      "identity": {
+        "url": "https://netlify-mcp.netlify.app/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "notion": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.notion.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "paypal": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.paypal.com/sse"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "plaid": {
+      "transport": "http",
+      "identity": {
+        "url": "https://api.dashboard.plaid.com/mcp/"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "postman": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.postman.com/minimal"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "prisma-postgres": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.prisma.io/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "railway": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.railway.com"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "robinhood": {
+      "transport": "http",
+      "identity": {
+        "url": "https://agent.robinhood.com/mcp/trading"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "semgrep": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.semgrep.ai/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "sentry": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.sentry.dev/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "square": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.squareup.com/sse"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "strava": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.strava.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "stripe": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.stripe.com"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "supabase": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.supabase.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "todoist": {
+      "transport": "http",
+      "identity": {
+        "url": "https://ai.todoist.net/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "trivago": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.trivago.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "twelve-data": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.twelvedata.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "twilio-docs": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.twilio.com/docs"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "unreal-engine": {
+      "transport": "http",
+      "identity": {
+        "url": "http://127.0.0.1:8000/mcp"
+      },
+      "executor": null,
+      "reason": "Editor-local loopback; a public executor cannot reach the editor host.",
+      "safety": "local-only"
+    },
+    "vercel": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.vercel.com"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "webflow": {
+      "transport": "http",
+      "identity": {
+        "url": "https://mcp.webflow.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "wolfram": {
+      "transport": "http",
+      "identity": {
+        "url": "https://agenttools.wolfram.com/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
+    "wordpress-com": {
+      "transport": "http",
+      "identity": {
+        "url": "https://public-api.wordpress.com/wpcom/v2/mcp/v1"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    }
+  },
+  "packages": {
+    "@colbymchenry/codegraph": {
+      "executor": "workspace",
+      "reason": "Reads project files from the mounted workspace.",
+      "executable": "codegraph"
+    },
+    "@modelcontextprotocol/server-github": {
+      "executor": "api",
+      "reason": "Remote GitHub service; no workspace path is required.",
+      "executable": "mcp-server-github"
+    },
+    "@modelcontextprotocol/server-sequential-thinking": {
+      "executor": "api",
+      "reason": "Stateless package; no workspace path is required.",
+      "executable": "mcp-server-sequential-thinking"
+    },
+    "@playwright/mcp": {
+      "executor": "browser",
+      "reason": "Controls a browser session on the browser executor.",
+      "executable": "playwright-mcp"
+    },
+    "@upstash/context7-mcp": {
+      "executor": "api",
+      "reason": "Remote documentation service; no workspace path is required.",
+      "executable": "context7-mcp"
+    },
+    "@zereight/mcp-gitlab": {
+      "executor": "api",
+      "reason": "Remote GitLab service; no workspace path is required.",
+      "executable": "mcp-gitlab"
+    },
+    "chrome-devtools-mcp": {
+      "executor": "browser",
+      "reason": "Controls a browser session on the browser executor.",
+      "executable": "chrome-devtools-mcp"
+    }
+  },
+  "executables": {
+    "codegraph": {
+      "package": "@colbymchenry/codegraph",
+      "executor": "workspace",
+      "reason": "Reads project files from the mounted workspace."
+    },
+    "mcp-server-github": {
+      "package": "@modelcontextprotocol/server-github",
+      "executor": "api",
+      "reason": "Remote GitHub service; no workspace path is required."
+    },
+    "mcp-server-sequential-thinking": {
+      "package": "@modelcontextprotocol/server-sequential-thinking",
+      "executor": "api",
+      "reason": "Stateless package; no workspace path is required."
+    },
+    "playwright-mcp": {
+      "package": "@playwright/mcp",
+      "executor": "browser",
+      "reason": "Controls a browser session on the browser executor."
+    },
+    "context7-mcp": {
+      "package": "@upstash/context7-mcp",
+      "executor": "api",
+      "reason": "Remote documentation service; no workspace path is required."
+    },
+    "mcp-gitlab": {
+      "package": "@zereight/mcp-gitlab",
+      "executor": "api",
+      "reason": "Remote GitLab service; no workspace path is required."
+    },
+    "chrome-devtools-mcp": {
+      "package": "chrome-devtools-mcp",
+      "executor": "browser",
+      "reason": "Controls a browser session on the browser executor."
+    }
+  },
+  "presets": {
+    "codex": {
+      "identity": {
+        "command": "codex",
+        "args": [
+          "mcp-server"
+        ]
+      },
+      "executor": "vm",
+      "reason": "Preset-specific identity; target must be provisioned explicitly."
+    }
+  },
+  "path_policy": {
+    "workspace": "mcp.workspace_target.roots; exact path boundary match"
+  },
+  "safety": {
+    "vm_requires": "mcp.executor_targets.vm and the MCP-specific SSH key",
+    "loopback": "local-only endpoints cannot be routed through a public executor"
+  }
+}

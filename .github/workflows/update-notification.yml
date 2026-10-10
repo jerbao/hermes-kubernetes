@@ -1,0 +1,34 @@
+name: Report update status
+on:
+  workflow_call:
+    inputs:
+      status:
+        required: true
+        type: string
+      incident:
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+  issues: write
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retrieve update reports when available
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: hermes-*-review-${{ github.run_id }}
+          path: .build
+          merge-multiple: true
+      - name: Notify failure or recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_ALERT_USERS: ${{ vars.UPSTREAM_ALERT_USERS || github.repository_owner }}
+          UPDATE_RESULT: ${{ inputs.status }}
+          UPDATE_INCIDENT: ${{ inputs.incident }}
+        run: python3 scripts/report_update_status.py --status "$UPDATE_RESULT" --incident "$UPDATE_INCIDENT"
