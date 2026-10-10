@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import importlib.util
 
 ROOT = Path(__file__).resolve().parent
 
@@ -52,6 +53,29 @@ def checkout(root, lock):
 
 
 def main():
+    if (
+        sys.argv[1:2] in (["setup"], ["sync"], ["check"], ["update"])
+        and sys.argv[1:3] != ["setup", "init"]
+        and importlib.util.find_spec("yaml") is None
+    ):
+        environment = ROOT / ".local/setup-venv"
+        python = environment / "bin/python"
+        if not python.exists():
+            import venv
+
+            venv.create(environment, with_pip=True)
+            subprocess.run(
+                [
+                    str(python),
+                    "-m",
+                    "pip",
+                    "install",
+                    "--disable-pip-version-check",
+                    "PyYAML==6.0.3",
+                ],
+                check=True,
+            )
+        return subprocess.call([str(python), str(__file__), *sys.argv[1:]])
     lock = json.loads((ROOT / "platform.lock.json").read_text())
     bundle = checkout(ROOT, lock)
     sys.path.insert(0, str(bundle))

@@ -111,6 +111,9 @@ def prepare(
     with (state / "hermes-bootstrap.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         ensure_home_alias(home)
+        from hermes_kubernetes.installation.environment import reconcile
+
+        reconcile(home, policy)
         separate_env_files(home)
         instance = json.loads((policy / "instance.json").read_text())
         config_path = home / "config.yaml"
@@ -121,10 +124,14 @@ def prepare(
                 "base_url", initial["model"]["base_url"]
             )
             initial["timezone"] = instance["timezone"]
+            initial["terminal"]["cwd"] = instance.get("workspace", initial["terminal"]["cwd"])
             atomic_write(
                 config_path,
                 yaml.safe_dump(initial, allow_unicode=True, sort_keys=False),
             )
+        soul = policy / "SOUL.md"
+        if soul.is_file() and not (home / "SOUL.md").exists():
+            atomic_write(home / "SOUL.md", soul.read_text())
         definitions = prepare_configuration(home, home, instance=instance)
         profiles = home / "profiles"
         if profiles.is_dir():

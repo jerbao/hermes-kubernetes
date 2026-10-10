@@ -1,0 +1,172 @@
+---
+- name: Prepare a disposable Ubuntu terminal with a persistent CephFS home
+  hosts: terminal
+  become: true
+  gather_facts: false
+  handlers:
+    - name: Reload SSH
+      ansible.builtin.systemd_service:
+        name: ssh.service
+        state: reloaded
+  tasks:
+    - name: Wait for the authenticated guest
+      ansible.builtin.wait_for_connection:
+        timeout: 180
+    - name: Gather facts
+      ansible.builtin.setup:
+    - name: Require Ubuntu and a dedicated Ceph client
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == 'Ubuntu'
+          - ceph_client not in ['admin', 'k3s']
+          - terminal_user is match('^[a-z_][a-z0-9_-]*$')
+    - name: Inspect an existing Hermes home
+      ansible.builtin.stat:
+        path: "/home/{{ terminal_user }}/.hermes"
+      register: existing
+    - name: Inspect the current home filesystem
+      ansible.builtin.command:
+        argv: [findmnt, -n, -o, FSTYPE, -T, "/home/{{ terminal_user }}"]
+      changed_when: false
+      failed_when: false
+      register: home_fs
+    - name: Refuse to hide existing local Hermes data
+      ansible.builtin.assert:
+        that:
+          - not existing.stat.exists or home_fs.stdout | trim == 'fuse.ceph-fuse'
+    - name: Install reconstructible terminal packages
+      ansible.builtin.apt:
+        name: [ceph-fuse, fuse3, git, python3, python3-venv, rsync, sudo, openssh-server, docker.io, docker-compose-v2]
+        state: present
+        update_cache: true
+    - name: Create the terminal user with a stable UID
+      ansible.builtin.user:
+        name: "{{ terminal_user }}"
+        uid: "{{ terminal_uid }}"
+        shell: /bin/bash
+        groups: [docker]
+        append: true
+        create_home: true
+        password_lock: true
+    - name: Create Ceph configuration
+      ansible.builtin.file:
+        path: /etc/ceph
+        state: directory
+        mode: '0755'
+    - name: Install the limited Ceph keyring
+      ansible.builtin.copy:
+        dest: "/etc/ceph/ceph.client.{{ ceph_client }}.keyring"
+        content: "[client.{{ ceph_client }}]\nkey = {{ lookup('file', ceph_key_file) }}\n"
+        mode: '0600'
+      no_log: true
+    - name: Create the workspace mount point
+      ansible.builtin.file:
+        path: /srv/hermes-workspace
+        state: directory
+        mode: '0755'
+    - name: Configure userspace CephFS
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/hermes-workspace.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Persistent Hermes workspace
+          Wants=network-online.target
+          After=network-online.target
+          Before=home-{{ terminal_user }}.mount
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/ceph-fuse -f -n client.{{ ceph_client }} -m {{ ceph_monitors }} --keyring /etc/ceph/ceph.client.{{ ceph_client }}.keyring --client-fs {{ ceph_filesystem }} -r {{ ceph_subvolume }} -o allow_other /srv/hermes-workspace
+          ExecStartPost=/usr/bin/timeout 60 /bin/sh -c 'until /usr/bin/findmnt -n --mountpoint /srv/hermes-workspace --types fuse.ceph-fuse >/dev/null; do sleep 1; done'
+          ExecStop=/usr/bin/fusermount3 -u /srv/hermes-workspace
+          Restart=on-failure
+          [Install]
+          WantedBy=multi-user.target
+    - name: Mount durable workspace without restarting an active mount
+      ansible.builtin.systemd_service:
+        name: hermes-workspace.service
+        enabled: true
+        state: started
+        daemon_reload: true
+    - name: Inspect the durable home
+      ansible.builtin.stat:
+        path: /srv/hermes-workspace/home
+      register: durable_home
+    - name: Create the durable home only when absent
+      ansible.builtin.file:
+        path: /srv/hermes-workspace/home
+        state: directory
+        owner: "{{ terminal_user }}"
+        group: "{{ terminal_user }}"
+        mode: '0700'
+      when: not durable_home.stat.exists
+    - name: Preserve existing durable home ownership
+      ansible.builtin.assert:
+        that:
+          - not durable_home.stat.exists or durable_home.stat.uid == terminal_uid | int
+    - name: Bind the user's home to the persistent filesystem
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^/srv/hermes-workspace/home '
+        line: "/srv/hermes-workspace/home /home/{{ terminal_user }} none bind,x-systemd.requires=hermes-workspace.service,x-systemd.after=hermes-workspace.service 0 0"
+    - name: Mount the home on first preparation
+      ansible.builtin.command:
+        argv: [mount, "/home/{{ terminal_user }}"]
+      when: home_fs.stdout | trim != 'fuse.ceph-fuse'
+    - name: Create the persistent authorization directory
+      ansible.builtin.file:
+        path: "/home/{{ terminal_user }}/.ssh"
+        state: directory
+        owner: "{{ terminal_user }}"
+        group: "{{ terminal_user }}"
+        mode: '0700'
+    - name: Authorize only the installation runtime key
+      ansible.builtin.lineinfile:
+        path: "/home/{{ terminal_user }}/.ssh/authorized_keys"
+        line: "{{ terminal_public_key }}"
+        create: true
+        owner: "{{ terminal_user }}"
+        group: "{{ terminal_user }}"
+        mode: '0600'
+    - name: Preserve the host identity across OS replacement
+      ansible.builtin.copy:
+        src: "{{ terminal_host_key }}"
+        dest: /etc/ssh/ssh_host_ed25519_key
+        mode: '0600'
+        validate: /usr/bin/ssh-keygen -y -f %s
+      no_log: true
+      notify: Reload SSH
+    - name: Install the matching public host key
+      ansible.builtin.copy:
+        src: "{{ terminal_host_key }}.pub"
+        dest: /etc/ssh/ssh_host_ed25519_key.pub
+        mode: '0644'
+    - name: Create service guard directories
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ item }}.service.d"
+        state: directory
+        mode: '0755'
+      loop: [ssh, docker]
+    - name: Require persistent storage before SSH and Docker
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item }}.service.d/hermes-workspace.conf"
+        mode: '0644'
+        content: |
+          [Unit]
+          Requires=hermes-workspace.service
+          After=hermes-workspace.service
+          RequiresMountsFor=/home/{{ terminal_user }}
+          [Service]
+          ExecStartPre=/usr/bin/findmnt -n --mountpoint /srv/hermes-workspace --types fuse.ceph-fuse
+          ExecStartPre=/usr/bin/findmnt -n --mountpoint /home/{{ terminal_user }} --types fuse.ceph-fuse
+      loop: [ssh, docker]
+    - name: Start Docker with its storage guard
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+        daemon_reload: true
+    - name: Allow the user sync timer to run without an interactive login
+      ansible.builtin.command:
+        argv: [loginctl, enable-linger, "{{ terminal_user }}"]
+        creates: "/var/lib/systemd/linger/{{ terminal_user }}"

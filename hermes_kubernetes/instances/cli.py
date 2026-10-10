@@ -64,8 +64,22 @@ def main():
     update.add_argument("--version", default="latest")
     update.add_argument("--check-only", action="store_true")
     commands.add_parser("check")
+    setup = commands.add_parser("setup")
+    setup.add_argument(
+        "action", choices=["init", "plan", "configure", "install", "drive-auth", "connect"]
+    )
+    setup.add_argument("--env-file", type=Path)
+    setup.add_argument("--infra", action="store_true")
     a = p.parse_args()
     root = a.root.resolve()
+    if a.command == "setup":
+        from hermes_kubernetes.installation.cli import dispatch
+
+        result = dispatch(root, a.action, env_file=a.env_file, infra=a.infra)
+        if isinstance(result, int):
+            return result
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("ready", True) else 2
     if a.command == "runtime":
         environment = dict(os.environ, HERMES_HOME=str(root))
         return subprocess.call(

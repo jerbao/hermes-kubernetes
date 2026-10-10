@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path, PurePosixPath
 
 ROOT_FILES = {
+    ".env.example",
     ".dockerignore",
     ".gitignore",
     "AGENTS.md",

@@ -1,6 +1,7 @@
 # HERMES_HOME is private by default. Generated from project-files.json.
 /*
 !/.dockerignore
+!/.env.example
 !/.gitignore
 !/AGENTS.md
 !/LICENSE

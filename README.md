@@ -33,15 +33,22 @@ replaceable when its durable workspace is stored independently.
 Use a published stable distribution release, then create a private repository:
 
 ```sh
-python3 hermes_kubernetes/instances/generator.py --directory ../my-hermes --release v0.1.0
+python3 hermes_kubernetes/instances/generator.py --directory ../my-hermes --release v0.2.0
 cd ../my-hermes
-# Review instance.json and your private Kubernetes overlay.
+python3 hermes.py setup init
+# Fill .env: assistant, model, terminal, namespace and optional Proxmox/Drive.
+# For automatic Git sync, also set INSTANCE_REPOSITORY and the deploy-key paths.
+python3 hermes.py setup plan
+python3 hermes.py setup configure
 gh repo create my-hermes --private --source . --push
+python3 hermes.py setup install
+python3 hermes.py setup connect
 ```
 
-See [installation](docs/installation/getting-started.md) for credentials, networking and activation.
+See the [.env configuration guide](docs/installation/environment.md) for
+credentials, VM/LXC provisioning, networking and encrypted Google Drive backups.
 The generator refuses to overwrite existing files. It creates a version lock,
-bootstrap CLI and update workflow; it does not put personal state in this repo.
+bootstrap CLI, `.env.example` and update workflow; it does not put personal state in this repo.
 Your private GitOps repository controls deployment, including image promotion.
 
 ## Updates

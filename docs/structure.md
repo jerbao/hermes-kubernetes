@@ -17,12 +17,15 @@ where container supervisors or bootstrap scripts require absolute paths.
 | `hermes_kubernetes/source/` | Pinned upstream checkout, patches and native test selection |
 | `hermes_kubernetes/releases/` | Release manifests, registry verification, publication and alerts |
 | `hermes_kubernetes/instances/` | Private scaffold, CLI and transactional release/skill adoption |
+| `hermes_kubernetes/installation/` | Environment schema, planning, OpenTofu/Ansible provisioning, Secrets and deployment |
 | `hermes_kubernetes/project/` | Git inventory, source review, validation and isolated image contexts |
 | `hermes_kubernetes/checks/` | Reusable automated verification commands |
 | `scripts/` | Shell entry points for image builds, smoke checks and local development |
 | `containers/` | Dockerfiles for Hermes and MCP variants |
 | `dependencies/mcp/` | Node/Python dependency manifests and locks |
+| `dependencies/proxmox/` | Pinned OpenTofu provider checksums |
 | `deploy/kubernetes/` | Generic Kustomize base and optional executor overlay |
+| `deploy/ansible/` | Disposable terminal configuration with durable CephFS home |
 | `systemd/` | Terminal controller and backup unit templates |
 | `config/` | Generic configuration, tool pins and executor catalog |
 | `patches/` | Focused changes to official Hermes; never patches for our own files |
@@ -42,6 +45,11 @@ Private consumers own `instance.json`, `platform.lock.json`, `customizations/`
 and deployment overlays. Shared source stays inspectable in
 `.local/platform/<commit>/` without being copied into each private history.
 Every runtime profile has its own `.env`.
+
+The root `.env.example` documents installation settings. Private instances copy
+it to an ignored installer `.env`; it is separate from runtime profile `.env`
+files. Generated non-secret manifests live in `config/installation/` and are
+committed. Operator credentials and provisioning state stay under `.local/`.
 
 `/opt/hermes-personal` remains the container integration root for compatibility;
 it contains `hermes_kubernetes/`, generic configuration and distribution skills.

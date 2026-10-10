@@ -155,6 +155,8 @@ class BootstrapTests(unittest.TestCase):
                 path.mkdir(parents=True)
             (bundle / "config/hermes.yaml").write_bytes((ROOT / "config/hermes.yaml").read_bytes())
             proxy_url = "http://cli-proxy-api.cli-proxy-api.svc.cluster.local:8317/v1"
+            (policy / "SOUL.md").write_text("Your name is Example Assistant.\n")
+            (policy / "initial.env").write_text("CLI_PROXY_API_KEY=example-initial-key\n")
             (policy / "instance.json").write_text(
                 json.dumps(
                     {
@@ -163,6 +165,7 @@ class BootstrapTests(unittest.TestCase):
                         "terminal_host": "192.0.2.116",
                         "model": "selected",
                         "timezone": "UTC",
+                        "workspace": "/home/hermes/.hermes",
                         "proxy": {
                             "mode": "external",
                             "namespace": "cli-proxy-api",
@@ -180,6 +183,10 @@ class BootstrapTests(unittest.TestCase):
             config = yaml.safe_load((home / "config.yaml").read_text())
             self.assertEqual(config["model"]["default"], "selected")
             self.assertEqual(config["model"]["base_url"], proxy_url)
+            self.assertEqual(config["terminal"]["cwd"], "/home/hermes/.hermes")
+            self.assertEqual((home / "SOUL.md").read_text(), "Your name is Example Assistant.\n")
+            self.assertIn("example-initial-key", (home / ".env").read_text())
+            (home / "SOUL.md").write_text("My edited persona\n")
             config["personal_preference"] = "kept"
             (home / "config.yaml").write_text(yaml.safe_dump(config))
             prepare(home, bundle, policy, ssh, source)
@@ -188,6 +195,7 @@ class BootstrapTests(unittest.TestCase):
                 "kept",
             )
             self.assertEqual((home / ".ssh/id_ed25519").stat().st_mode & 0o777, 0o600)
+            self.assertEqual((home / "SOUL.md").read_text(), "My edited persona\n")
 
     def test_dedicated_transport_uses_socks_and_rejects_an_injected_target(self):
         config = ssh_configuration(
