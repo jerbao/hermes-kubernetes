@@ -1,100 +1,90 @@
 ---
 name: hermes-self-management
-description: Administrar o próprio Hermes nesta implantação Kubernetes, incluindo plugins, skills, MCPs, perfis, configuração, atualizações e debug, usando o runtime ativo a partir do terminal separado.
+description: Manage this Hermes Kubernetes instance through its active runtime, preserving private profiles and using the shared distribution for code changes.
 ---
 
-O terminal está em um **terminal SSH**, enquanto gateway e dashboard/API executam
-no Kubernetes. Um comando comum no terminal executa no terminal, não no pod.
-`~/.hermes` no terminal é a raiz Git do projeto; `HERMES_HOME` no pod é o estado
-ativo no PVC. Caminhos semelhantes e sincronização não os tornam o mesmo runtime.
+The shell tool runs on an external SSH terminal. Gateway and Desktop/API run in
+Kubernetes. The private instance Git repository is `~/.hermes` on the terminal;
+the active `HERMES_HOME` is on the pod's PVC. Similar paths do not mean that the
+terminal and pod share a Python runtime or a writable core installation.
 
-## Escolha do destino
-
-| Pedido | Onde agir |
-|---|---|
-| Instalar, atualizar, ativar, desativar ou remover plugin | Gerenciador nativo **no pod**, via interface ou ponte de operações |
-| Configurar perfil, credenciais, canais, skills ou MCPs | Estado nativo do perfil **no pod**, pela interface/ferramenta nativa ou ponte |
-| Executar shell, trabalhar em projetos, usar desktop | Terminal terminal e workspace persistente |
-| Instalar pacotes de um MCP stdio | Executor MCP escolhido pela política, pelo transporte nativo |
-| Corrigir o núcleo do Hermes | Checkout `hermes-agent/` no terminal, exportar patches e publicar imagem |
-| Mudar rede, volumes, serviços ou infraestrutura | Repositório responsável; o terminal não administra o cluster |
-
-Antes de administrar o estado ativo:
+## Inspect before administering the active runtime
 
 ```sh
 cd ~/.hermes
 python3 hermes.py runtime info
 ```
 
-Confira instância, caminhos e proveniência retornados. Se a ponte estiver
-indisponível, reporte isso; não substitua a operação por uma instalação local.
-Use explicitamente o perfil do pedido. `default` é um perfil válido, inclusive
-quando há um único bot. Não troque o perfil global como atalho.
+Read the instance name, roots and provenance. Use the requested profile explicitly,
+including `default`. If the operations bridge is unavailable, report the missing
+connection; do not administer an unrelated local installation instead.
+Native profile-aware tools and the connected Desktop/API already act on the pod.
 
-## Plugins: usar o runtime ativo
+## Plugins, profiles and MCPs
 
-Leia [plugins e perfis](references/plugins.md) antes de administrar um plugin
-por conversa. Use a CLI nativa através da ponte, por exemplo:
+Use the native interface or the operations bridge for production administration:
 
 ```sh
 python3 hermes.py runtime exec --timeout 3600 -- \
-  hermes --profile default plugins install IDENTIFICADOR --yes-deps --enable
+  hermes --profile default plugins install IDENTIFIER --yes-deps --enable
 ```
 
-Substitua `default` pelo perfil do pedido e `IDENTIFICADOR` pela entrada do
-catálogo ou repositório solicitado. Os flags acima correspondem ao pedido de
-instalar com dependências e ativar; para somente instalar, use `--no-enable`.
-Preserve recusas e consentimentos nativos. Confira o registro no **mesmo perfil**,
-o resultado de ativação e eventual necessidade de nova sessão ou reinício.
+Read [plugin management](references/plugins.md) before operating through chat.
+Preserve native prompts and approvals. Use `--no-enable` when only installation
+was requested, and inspect results in the same profile. Desktop-local components
+still require installation on the user's Desktop.
 
-**Não execute `hermes plugins install`, `pip install` ou `git clone` diretamente
-no terminal para administrar produção.** Não instale pacotes no código somente leitura
-da imagem nem reconstrua a imagem para cada plugin. O PM nativo prepara as
-dependências persistentes no PVC. A referência explica plugins portáveis,
-atualizações e componentes que também precisam ser instalados no Desktop local.
+Never run production `pip install`, `hermes plugins install` or plugin clones in
+the terminal development environment or the read-only image core. The pod's
+native package manager owns persistent plugin dependencies. MCP stdio packages
+belong to isolated executors, never the Hermes Python environment.
 
-## Estrutura e personalizações
+Known MCPs use the executor map. Unknown packages may require an explicit
+`--hermes-executor=api`, `--hermes-executor=browser` or
+`--hermes-executor=workspace` argument. The bridge removes this flag before
+execution. Do not infer arbitrary package capabilities. `vm` requires its own
+provisioned MCP target and key; it is not a terminal-key fallback. HTTP MCPs use
+their native HTTP transport and the private installation's egress policy.
 
-Leia [estrutura atual](references/structure.md) para localizar containers,
-volumes, executores MCP, inferência, repositórios, sincronização e backups.
-Ela explica qual cópia de um arquivo editar e como verificar publicação.
+## Personalizations and source ownership
 
-Crie skills pessoais pela ferramenta `skill_manage` no perfil ativo. Skills e
-plugins instalados são projetados automaticamente em `customizations/<perfil>/`,
-sem editar uma lista por nome. A base pública seleciona as skills **da distribuição**; overrides
-pessoais continuam no repositório privado. Uma edição feita apenas no terminal não comprova
-instalação nem recarga no pod. Cada perfil mantém seu próprio `.env`.
+Create personal skills using `skill_manage` on the active profile. Native skills,
+plugins, personas, sanitized configuration and installation locks are projected
+into the private repository's `customizations/<profile>/`. No per-skill allowlist
+is required. Every profile has an independent private `.env`.
 
-`skills/` na base pública é a fonte das skills da distribuição; não mantenha cópias idênticas
-manualmente em `customizations/`. Alterações nessa fonte passam por CI/imagem.
-A atualização compara a base anterior, a nova fonte e a personalização do perfil;
-preserva edições compatíveis e bloqueia conflitos antes de publicar a candidata.
-As cópias instaladas são reconciliadas no runtime. Diagnósticos ficam fora das
-skills carregadas; nunca entregue marcadores de conflito ao agente. Veja
-`docs/atualizacoes.md` e `scripts/reconcile_skills.py` para preparar uma candidata.
+The public distribution owns runtime code, patches and `skills/`. The private
+repository pins that dependency in `platform.lock.json`; inspectable shared
+source is cached in `.local/platform/<revision>/`. Do not edit the immutable
+cache to maintain a private copy of common code. Submit common fixes in a
+separate development checkout of the public repository.
 
-## Desenvolvimento e debug do núcleo
+Use `python3 hermes.py source` to prepare `hermes-agent/` from the pinned upstream
+and patches, and `python3 hermes.py source-status` to inspect its identity. The
+core checkout is ignored, independent Git source. Read its native `AGENTS.md`
+before editing, preserve local work and active processes, and export intended
+changes as focused patches in a public distribution development checkout.
+Never reset or clean a personal home to force an update.
 
-Somente quando o pedido envolve fonte, confira `python3 hermes.py source-status` e a
-proveniência do runtime. O checkout independente `hermes-agent/` contém a revisão
-de `upstream.lock.json` e os patches publicados, registrados em commit local
-reproduzível. Ele é ignorado pelo Git pessoal; exporte mudanças para os grupos
-de `patches/series.json` por `scripts/export_patch.py`.
+## Updates and conflicts
 
-Use `python3 hermes.py source` para alinhar uma fonte gerenciada ociosa. Preserve edições,
-branches e processos ativos; se necessário, prepare outra fonte com
-`make SOURCE=.local/dev-source checkout (no checkout de desenvolvimento da base pública)`. `vm/dev.sh` usa home e ambiente de
-desenvolvimento separados. Leia `hermes-agent/AGENTS.md`, as instruções da área
-e `docs/desenvolvimento.md` antes de mudar o núcleo. Fontes anteriores ficam
-em `.local/source-history/`; não use reset/clean para forçar a troca.
+Common fixes are tested and released by the public project. The private update
+workflow proposes a PR with the version lock, digest pins and reconciled skills.
+The private deployment controller owns activation. The public workflow has no
+credential to deploy anyone's Hermes.
 
-Código comum é alterado na base pública e publicado como release. O repositório
-privado adota a versão por PR e seus manifestos controlam o deploy;
-ArgoCD atualiza o runtime quando configurado. Upstream, patches e contrato exigem revisão com
-revisão da release e do repositório privado. Uma edição local ou build concluído não comprova deploy.
-Compare a proveniência e a idade dos logs privados em `.local/diagnostics`.
+Three-way skill reconciliation compares the old template, new template and
+personal edit. Compatible changes survive; conflicting candidates stop and
+notify the owner on GitHub. Do not place conflict markers in active skills or
+ask the active agent to choose between contradictory instructions. Identical
+managed copies are reconstructed from the image; personal overrides stay in Git.
 
-Use scripts reutilizáveis para verificações. Teste a operação/área alterada e
-falhas pendentes; não repita chamadas de IA/API sobre recursos inalterados.
-O CI pode executar sua suíte completa. Não inicie backups completos como etapa
-automática de instalação de plugin ou alteração desta skill.
+Do not use `hermes update` or `git pull` in the read-only pod core. Do not bypass
+`waiting-for-runtime`: the controller waits for the image matching the pinned
+source before applying dependent personalizations. A local edit, commit or
+successful image build does not prove production activation.
+
+Read [structure and operations](references/structure.md) for state paths,
+compare-and-swap editing, MCP updates and backup boundaries. Use reusable scripts
+for changed behavior and pending failures. Do not repeat model/API calls for
+unchanged capabilities or run a complete backup for ordinary plugin management.

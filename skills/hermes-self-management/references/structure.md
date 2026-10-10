@@ -1,6 +1,6 @@
 # Estrutura em uso
 
-Consulte `vm/runtime_client.py info`, a política da instância e
+Consulte `python3 hermes.py runtime info`, a política da instância e
 lock de upstream da base pública para caminhos e versões atuais. Valores concretos da
 infraestrutura pertencem aos manifestos; não os fixe em scripts genéricos nem
 trate documentação antiga de migração como descrição da produção atual.
@@ -26,7 +26,9 @@ protege contra recriação; recuperação de exclusões exige backup.
 ## Caminhos e repositórios
 
 No terminal, `~/.hermes` é a raiz Git de repositório privado. `hermes-agent/` é
-checkout independente reconstruído do upstream fixado mais patches. `.local/`
+checkout independente reconstruído do upstream fixado mais patches. A base
+pública fica em `.local/platform/<revision>/`, selecionada por `platform.lock.json`;
+essa dependência ficam runtime, scripts e patches compartilhados. `.local/`
 contém diagnósticos, ambientes de desenvolvimento e estado privado da
 sincronização. Cópias/projeções no terminal não substituem o estado ativo do pod.
 
@@ -102,7 +104,7 @@ O controlador no terminal reconcilia Git, estado nativo e baseline, preservando
 conflitos. Projeta fontes de skills/plugins, persona, configuração com
 referências privadas, origem/revisão e locks PM/MCP em `customizations/<perfil>/`.
 Em `main`, publica alterações admitidas após 120 segundos estáveis. Branches,
-conflitos e mudanças de upstream/patches/layout exigem tratamento explícito.
+conflitos e mudanças da versão da distribuição exigem PR e tratamento explícito.
 Veja `docs/versionamento.md`; editar a projeção não prova aplicação no pod.
 
 Personalizações não exigem rebuild. Código da distribuição/núcleo passa por
