@@ -9,6 +9,7 @@ validate:
 	$(PYTHON) -m hermes_kubernetes.checks.structure
 test:
 	$(PYTHON) hermes_kubernetes/source/prepare.py --checkout --output "$(SOURCE)" --allow-local-edits
+	$(PYTHON) -m hermes_kubernetes.mcp.catalog --source "$(SOURCE)" --check
 	$(PYTHON) hermes_kubernetes/source/skill_patches.py --source "$(SOURCE)"
 	HERMES_SOURCE_DIR="$(abspath $(SOURCE))" $(PYTHON) -m unittest discover -s tests -t . -v
 test-hermes:

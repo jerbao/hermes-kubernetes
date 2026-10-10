@@ -81,8 +81,11 @@ print(json.dumps({'restored':True,'generation':generation_id,'extras':original['
 """
         # Send the large prior lock over stdin to the terminal instead of SSH argv.
     helper = r"""
-import io,pathlib,sys,tempfile,uuid
-root=pathlib.Path.home()/'.hermes';sys.path.insert(0,str(root/'runtime'))
+import io,json,pathlib,sys,tempfile,uuid
+root=pathlib.Path.home()/'.hermes'
+lock=root/'platform.lock.json'
+bundle=root/'.local/platform'/json.loads(lock.read_text())['revision'] if lock.is_file() else root
+sys.path.insert(0,str(bundle))
 from hermes_kubernetes.operations.protocol import Client
 client=Client(str(root/'.local/runtime/control.sock'),timeout=150)
 destination='state/versioning/pm-selection-'+uuid.uuid4().hex+'.py'

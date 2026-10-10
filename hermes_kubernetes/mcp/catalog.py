@@ -166,7 +166,7 @@ def _package_name(value: str) -> str:
 def generate(source: Path) -> dict:
     source = source.resolve()
     mcp_config = source / "hermes_cli" / "mcp_config.py"
-    runner = ROOT / "mcp" / "runner.py"
+    runner = ROOT / "hermes_kubernetes/executors/runner.py"
     presets = _assignment(mcp_config, "_MCP_PRESETS")
     package_bins = _assignment(runner, "NPM_BINS")
     if set(presets) != set(PRESET_EXECUTORS):
