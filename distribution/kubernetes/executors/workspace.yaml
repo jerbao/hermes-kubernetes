@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-mcp-codegraph
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hermes-mcp-codegraph
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hermes-mcp-codegraph
+    spec:
+      serviceAccountName: hermes
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 10000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+      - name: executor
+        image: hermes-mcp-codegraph:initial
+        ports:
+        - name: ssh
+          containerPort: 2222
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: '2'
+            memory: 2Gi
+        startupProbe:
+          tcpSocket:
+            port: ssh
+          periodSeconds: 5
+          failureThreshold: 24
+        readinessProbe:
+          tcpSocket:
+            port: ssh
+          periodSeconds: 10
+        volumeMounts:
+        - name: server-ssh
+          mountPath: /etc/mcp-ssh
+          readOnly: true
+        - name: data
+          mountPath: /var/lib/mcp
+        - name: tmp
+          mountPath: /tmp
+        - name: workspace
+          mountPath: /workspace
+        args:
+        - --workspace
+        - /workspace
+      volumes:
+      - name: server-ssh
+        secret:
+          secretName: hermes-mcp-server-ssh
+          defaultMode: 288
+      - name: data
+        persistentVolumeClaim:
+          claimName: hermes-mcp-codegraph-data
+      - name: tmp
+        emptyDir:
+          sizeLimit: 1Gi
+      - name: workspace
+        persistentVolumeClaim:
+          claimName: hermes-workspace
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hermes-mcp-codegraph-data
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hermes-mcp-codegraph
+spec:
+  selector:
+    app.kubernetes.io/name: hermes-mcp-codegraph
+  ports:
+  - name: ssh
+    port: 2222
+    targetPort: ssh

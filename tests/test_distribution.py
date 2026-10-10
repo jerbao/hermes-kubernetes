@@ -97,6 +97,34 @@ class DistributionTests(unittest.TestCase):
         with patch('release.request',side_effect=[json.dumps(v).encode() for v in responses]):
             with self.assertRaisesRegex(ValueError,'tagged source'):resolve('owner/distribution')
 
+    def test_actual_cross_repository_skill_reconciliation_preserves_private_edit(self):
+        from test_skill_updates import SkillUpdatesTests, TEXT, git, put
+        from update_instance import reconcile_projection
+        fixture=SkillUpdatesTests();fixture.setUp();self.addCleanup(fixture.doCleanups)
+        old,base=fixture.project()
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary).resolve();instance=root/'instance';create(instance,manifest())
+            import shutil
+            shutil.copytree(old/'customizations',instance/'customizations')
+            git(instance,'add','customizations')
+            git(instance,'-c','user.name=Fixture','-c','user.email=fixture@example.test','commit','-qm','personal')
+            new=root/'candidate';subprocess.run(['git','clone','-q',str(old),str(new)],check=True)
+            template=new/'skills/management/SKILL.md';template.write_bytes(template.read_bytes().replace(b'first',b'new first'))
+            git(new,'-c','user.name=Fixture','-c','user.email=fixture@example.test','commit','-qam','distribution update')
+            original_run=subprocess.run
+            def prepare(command,**kwargs):
+                if len(command)>1 and str(command[1]).endswith('scripts/prepare_source.py'):
+                    destination=Path(command[command.index('--output')+1])
+                    return original_run(['git','clone','-q',str(fixture.source),str(destination)],check=True)
+                return original_run(command,**kwargs)
+            with patch.object(update_instance.subprocess,'run',side_effect=prepare):
+                report,changes=reconcile_projection(instance,old,new)
+            self.assertTrue(report['ready'])
+            desired=changes['customizations/default/skills/management/SKILL.md'][1][0]
+            self.assertIn(b'new first',desired);self.assertIn(b'personal last',desired)
+            self.assertNotIn(b'new first',(instance/'customizations/default/skills/management/SKILL.md').read_bytes())
+            self.assertEqual(json.loads((instance/'platform.lock.json').read_text())['version'],'v0.1.0')
+
     def test_public_workflows_have_no_private_gitops_credentials(self):
         for path in (ROOT/'.github/workflows').glob('*.yml'):
             text=path.read_text();self.assertNotIn('GITOPS_TOKEN',text);self.assertNotIn('manifestos-kubernetes',text)

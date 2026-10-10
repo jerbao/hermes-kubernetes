@@ -26,8 +26,9 @@ Keep allowlisted infrastructure destinations explicit and enforce NetworkPolicy
 with a CNI that supports it. Executor-specific privileges are not inferred from
 an arbitrary MCP package name.
 
-The reusable base provides Hermes without mandatory MCP executors. Add API,
-browser and workspace executor resources for the integrations you need; configure
+The reusable base provides Hermes without mandatory MCP executors. Add `distribution/kubernetes/executors` from the same release commit to the
+private overlay for API, browser and workspace executors, or select individual
+executor resources. Configure
 their dedicated SSH credentials, policy and durable dependency stores first.
 See mcp/README.md. Backups are a separately configured operation, not enabled by
 merely installing this distribution. Do not activate a new gateway against an

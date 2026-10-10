@@ -34,7 +34,7 @@ def reconcile_projection(root, old_bundle, new_bundle):
             path.write_bytes(base64.b64decode(item['data']));path.chmod(item['mode'])
         def git(*args):return subprocess.check_output(['git','-C',str(stage),*args],stderr=subprocess.PIPE,text=True).strip()
         git('config','user.name','Hermes release review');git('config','user.email','review@example.invalid')
-        git('add','customizations');git('commit','-qm','Private candidate baseline')
+        git('add','customizations');git('commit','--allow-empty','-qm','Private candidate baseline')
         base=git('rev-parse','HEAD')
         previous=set(git('ls-files','-z').split('\0'))-{''}
         current=set(subprocess.check_output(['git','-C',str(new_bundle),'ls-files','-z'],text=True).split('\0'))-{''}
