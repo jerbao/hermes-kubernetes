@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
-      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m pip install -r requirements-dev.txt -r mcp/requirements.txt
       - run: python scripts/check_publication.py
       - run: |
           python runtime/install_backup_tool.py --lock config/rclone.lock.json --destination "$RUNNER_TEMP/backup-tools/rclone"

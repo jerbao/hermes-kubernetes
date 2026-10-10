@@ -32,7 +32,7 @@ def create(directory, manifest, initialize=True):
     if initialize:
         subprocess.run(['git','init','-q','-b','main',str(directory)],check=True)
         subprocess.run(['git','-C',str(directory),'add','.'],check=True)
-        subprocess.run(['git','-C',str(directory),'commit','-qm','Initialize private Hermes instance'],check=True)
+        subprocess.run(['git','-C',str(directory),'-c','user.name=Hermes instance bootstrap','-c','user.email=bootstrap@example.invalid','commit','-qm','Initialize private Hermes instance'],check=True)
     return {'directory':str(directory),'version':manifest['version'],'private_repository_required':True}
 
 
