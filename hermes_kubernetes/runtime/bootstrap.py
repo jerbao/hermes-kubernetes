@@ -16,6 +16,7 @@ from pathlib import Path
 import hermes_yaml as yaml
 
 from hermes_kubernetes.runtime.configuration import (
+    is_bridge,
     restore_mcp,
     ssh_workspace_configuration,
 )
@@ -82,9 +83,7 @@ def prepare_configuration(home, root, inherited=None, *, instance=None):
     # A profile cloned from default carries its bridge commands. Import only
     # those original definitions; direct profile definitions remain independent.
     for name, server in configuration.get("mcp_servers", {}).items():
-        if isinstance(server, dict) and server.get("args", [])[:1] == [
-            "/opt/hermes-personal/hermes_kubernetes/mcp/bridge.py"
-        ]:
+        if is_bridge(server):
             if name not in previous and name in (inherited or {}):
                 previous[name] = inherited[name]
     routed = restore_mcp(configuration, previous)

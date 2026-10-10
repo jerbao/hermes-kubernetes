@@ -5,7 +5,13 @@ import copy
 from hermes_kubernetes.mcp.routing import validate_http_server
 
 BRIDGE = "/opt/hermes-personal/hermes_kubernetes/mcp/bridge.py"
+BRIDGES = {BRIDGE, "/opt/hermes-personal/ssh_mcp.py"}
 PYTHON = "/opt/hermes/.venv/bin/python"
+
+
+def is_bridge(server):
+    """Recognize persisted commands from before and after the package reorganization."""
+    return isinstance(server, dict) and bool(server.get("args")) and server["args"][0] in BRIDGES
 
 
 def ssh_workspace_configuration(configuration, home, root, instance):
@@ -40,7 +46,7 @@ def restore_mcp(configuration, previous=None):
     """Migrate legacy bridge definitions back to native, editable configuration."""
     config = copy.deepcopy(configuration)
     for name, server in config.get("mcp_servers", {}).items():
-        if not isinstance(server, dict) or server.get("args", [])[:1] != [BRIDGE]:
+        if not is_bridge(server):
             continue
         if name not in (previous or {}):
             raise ValueError(f"Missing original MCP definition for {name}")
@@ -64,7 +70,7 @@ def route_mcp(configuration, previous=None, *, state_home=None, ssh_home=None):
             continue
         if not server.get("command"):
             continue
-        if server.get("args", [])[:1] == [BRIDGE]:
+        if is_bridge(server):
             if name not in definitions:
                 raise ValueError(f"Missing original MCP definition for {name}")
         else:

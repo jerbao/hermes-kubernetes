@@ -93,6 +93,12 @@ class BootstrapTests(unittest.TestCase):
     def test_cloned_default_bridge_imports_only_the_explicitly_inherited_definition(
         self,
     ):
+        self.assert_cloned_bridge("/opt/hermes-personal/hermes_kubernetes/mcp/bridge.py")
+
+    def test_cloned_legacy_bridge_retains_profile_toggle(self):
+        self.assert_cloned_bridge("/opt/hermes-personal/ssh_mcp.py")
+
+    def assert_cloned_bridge(self, bridge):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "config.yaml").write_text("mcp_servers: {shared: {command: root-command}}\n")
@@ -100,7 +106,7 @@ class BootstrapTests(unittest.TestCase):
             profile = root / "profiles/clone"
             profile.mkdir(parents=True)
             (profile / "config.yaml").write_text(
-                "mcp_servers:\n  shared:\n    command: python\n    args: [/opt/hermes-personal/hermes_kubernetes/mcp/bridge.py, shared]\n    enabled: false\n"
+                f"mcp_servers:\n  shared:\n    command: python\n    args: [{bridge}, shared]\n    enabled: false\n"
             )
             copied = prepare_configuration(profile, root, definitions)
             self.assertEqual(copied["shared"]["command"], "root-command")

@@ -9,6 +9,26 @@ from hermes_kubernetes.runtime.configuration import restore_mcp, BRIDGE
 
 
 class DependenciesTests(unittest.TestCase):
+    def test_legacy_bridge_path_restores_original_definition_and_live_options(self):
+        config = {
+            "mcp_servers": {
+                "legacy": {
+                    "command": "python",
+                    "args": ["/opt/hermes-personal/ssh_mcp.py", "legacy"],
+                    "enabled": False,
+                    "env": {"TOKEN": "profile-value"},
+                }
+            }
+        }
+        original = {"legacy": {"command": "npx", "args": ["api-mcp@1.0.0"]}}
+        restored = restore_mcp(config, original)["mcp_servers"]["legacy"]
+        self.assertEqual(restored["command"], "npx")
+        self.assertEqual(restored["args"], ["api-mcp@1.0.0"])
+        self.assertFalse(restored["enabled"])
+        self.assertEqual(restored["env"], {"TOKEN": "profile-value"})
+        with self.assertRaisesRegex(ValueError, "Missing original MCP"):
+            restore_mcp(config)
+
     def test_native_migration_preserves_live_credentials_toggles_and_comments_inputs(
         self,
     ):
