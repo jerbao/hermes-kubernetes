@@ -3,6 +3,7 @@ set -eu
 HERMES_PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 HERMES_IMAGE=${1:?Specify the final image}
 HERMES_BASE_IMAGE=${HERMES_BASE_IMAGE:-hermes-personal-base:local}
+HERMES_IMAGE_SOURCE=${HERMES_IMAGE_SOURCE:-https://github.com/${GITHUB_REPOSITORY:-jerbao/hermes-kubernetes}}
 mkdir -p "$HERMES_PROJECT_DIR/.build"
 HERMES_SNAPSHOT=$(mktemp -d "$HERMES_PROJECT_DIR/.build/build-XXXXXX")
 trap 'rm -rf "$HERMES_SNAPSHOT"' EXIT
@@ -52,5 +53,6 @@ fi
 printf 'Image build platform: requested=%s base=%s wrapper=%s\n' \
     "$HERMES_PLATFORM" "$HERMES_BASE_PLATFORM" "$HERMES_WRAPPER_PLATFORM"
 docker build --builder "$HERMES_DAEMON_BUILDER" --platform "$HERMES_WRAPPER_PLATFORM" \
+    --label "org.opencontainers.image.source=$HERMES_IMAGE_SOURCE" \
     --build-arg "HERMES_BASE_IMAGE=$HERMES_BASE_IMAGE" --tag "$HERMES_IMAGE" "$HERMES_SNAPSHOT/image"
 sh "$HERMES_PROJECT_DIR/scripts/test_image.sh" "$HERMES_IMAGE"
