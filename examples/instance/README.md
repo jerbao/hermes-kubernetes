@@ -13,3 +13,6 @@ Shared runtime source is pinned by platform.lock.json and cached in .local.
 
 Keep this repository PRIVATE. Runtime secrets, state and dependency caches stay
 outside Git. The generated update workflow proposes PRs; GitOps owns deployment.
+Enable Issues and allow Actions to create pull requests in this repository's
+settings. Set `UPSTREAM_ALERT_USERS` to maintainer usernames for explicit alerts,
+especially when the repository owner is an organization.

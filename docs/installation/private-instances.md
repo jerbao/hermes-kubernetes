@@ -22,6 +22,20 @@ uses its own GITHUB_TOKEN, never a central token with access to everyone's repos
 To run CI on bot-created PRs the update workflow performs the candidate checks
 itself. Do not assume GitHub will trigger workflows from its own token's pushes.
 
+Before enabling scheduled updates in the private repository:
+
+- Enable Issues, which record blocked updates and notify the configured maintainers.
+- In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions
+  to create pull requests. The workflow requests its own write permissions.
+- Set the repository variable `UPSTREAM_ALERT_USERS` to comma-separated GitHub
+  usernames when explicit recipients are needed. For organization-owned
+  repositories, use actual maintainer usernames rather than the organization name.
+- Configure GitHub email/push subscriptions for the repository, then run
+  **Review shared Hermes updates** manually once to confirm repository permissions.
+
+No separate personal token is required for these update PRs. Credentials used by
+the terminal to push personalizations are separate and belong only to that instance.
+
 A release update does not automatically enable newly available capabilities or
 add credentials. Unknown MCPs require explicit executor selection where needed.
 The public repository has no credential to deploy any instance.
