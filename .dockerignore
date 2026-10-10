@@ -1,4 +1,3 @@
-# Use scripts/build_image.sh: it prepares a Git-selected context.
-# Building HERMES_HOME directly must not send state to Docker.
+# Direct builds must never transmit a native Hermes home.
+# The image-context command generates an isolated allowlist for each component.
 *
-!containers/hermes.Dockerfile
