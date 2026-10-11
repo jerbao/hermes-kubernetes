@@ -46,6 +46,36 @@ Preserve native prompts and approvals. Use `--no-enable` when only installation
 was requested, and inspect results in the same profile. Desktop-local components
 still require installation on the user's Desktop.
 
+Manage profile identity and lifecycle with Hermes' native profile commands. These
+commands operate on the live pod through the bridge; use the exact requested
+profile and consult native help before destructive operations:
+
+```sh
+python3 hermes.py runtime exec -- hermes profile list
+python3 hermes.py runtime exec -- hermes profile show PROFILE
+python3 hermes.py runtime exec -- hermes profile describe PROFILE
+python3 hermes.py runtime exec -- hermes profile describe PROFILE "Description"
+python3 hermes.py runtime exec -- hermes profile create --help
+python3 hermes.py runtime exec -- hermes profile delete --help
+```
+
+For reproducible profile metadata, edit
+`customizations/PROFILE/profile.json` in the terminal Git workspace. It mirrors
+the complete mapping in the live `HERMES_HOME/profiles/PROFILE/profile.yaml`
+(and the default profile's root `profile.yaml`), including fields unknown to
+Hermes such as plugin-owned namespaces. `profile.json` is canonical JSON; the
+sync controller converts it to native YAML and preserves unrecognized keys.
+Credentials are replaced with private references; never put tokens, passwords,
+or `.env` contents in plugin metadata. Native description changes and workspace
+metadata edits reconcile with compare-and-swap. If both sides changed since the
+last sync, the controller reports a conflict and preserves both copies.
+
+Keep plugin-owned configuration with its source, for example
+`customizations/PROFILE/plugins/PLUGIN/bots.yaml`, and have that plugin read it.
+This keeps custom plugin configuration under Git ownership without adding it to
+the core profile schema. Do not delete a profile by removing its customization
+directory; use the native profile manager.
+
 Never run production `pip install`, `hermes plugins install` or plugin clones in
 the terminal development environment or the read-only image core. The pod's
 native package manager owns persistent plugin dependencies. MCP stdio packages
@@ -77,6 +107,27 @@ core checkout is ignored, independent Git source. Read its native `AGENTS.md`
 before editing, preserve local work and active processes, and export intended
 changes as focused patches in a public distribution development checkout.
 Never reset or clean a personal home to force an update.
+
+Check background workspace synchronization explicitly. Its systemd units belong
+to Nyra's **user** manager, so always use `--user` when inspecting or enabling
+them. `sync-status` reports whether the timer is enabled/active, the last/next
+trigger, and whether a sync is running or failed:
+
+```sh
+python3 hermes.py sync-status
+python3 hermes.py sync --publish
+```
+
+The one-minute timer performs Git fast-forward, profile/source reconciliation,
+and stable publication on `main`. A successful `sync --publish` command reports
+its workspace, runtime projection and publication result as JSON. A conflict,
+missing bridge, disabled timer or failed service must be surfaced and resolved;
+do not assume a local edit reached the live profile. If the timer is disabled,
+Nyra can restore her own user unit with
+`systemctl --user enable --now hermes-workspace-sync.timer` and recheck
+`sync-status`. If a service run failed, inspect its user journal with
+`journalctl --user -u hermes-workspace-sync.service -n 50 --no-pager`. Git
+commits and pushes stay in `~/.hermes` as its owner.
 
 ## Updates and conflicts
 

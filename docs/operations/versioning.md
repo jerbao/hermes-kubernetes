@@ -1,9 +1,19 @@
 # State and versioning
 
 Shared source belongs to the public distribution. Per-profile configuration,
-personas, skills, plugin sources and installation locks belong to the private
-instance under customizations/<profile>. Native changes are reconciled with Git
-and a private baseline; concurrent edits are preserved as explicit conflicts.
+complete `profile.yaml` metadata, personas, skills, plugin sources and installation
+locks belong to the private instance under `customizations/<profile>`. The
+metadata projection is canonical JSON at `profile.json`; reconciliation translates
+it to the native YAML file while preserving unknown profile and plugin fields.
+Native changes are reconciled with Git and a private baseline; concurrent edits
+are preserved as explicit conflicts. Profile creation/deletion remains owned by
+the native profile manager; deleting `profile.json` only removes profile metadata.
+
+Run `python3 hermes.py sync-status` from the terminal Git root to inspect the
+user-level synchronization timer, the last/next timer trigger, and the service's
+current or failed state. `python3 hermes.py sync --publish` runs reconciliation
+and publication immediately and prints a JSON result. Never infer that a local
+projection is live just because the file was edited.
 
 SQLite/WAL/SHM, OAuth sessions, .env, credentials and dependency directories are
 never committed. Credential references in sanitized projections are resolved

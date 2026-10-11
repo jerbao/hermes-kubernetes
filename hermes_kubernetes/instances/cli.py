@@ -55,6 +55,7 @@ def main():
     commands.add_parser("runtime").add_argument("arguments", nargs=argparse.REMAINDER)
     sync = commands.add_parser("sync")
     sync.add_argument("--publish", action="store_true")
+    commands.add_parser("sync-status", help="Report user timer and last workspace sync state")
     backup = commands.add_parser("backup")
     backup.add_argument("--directory", required=True, type=Path)
     backup.add_argument("--keep", type=int, default=6)
@@ -114,6 +115,12 @@ def main():
         )
     if a.command == "sync":
         return synchronize(root, a.publish)
+    if a.command == "sync-status":
+        from hermes_kubernetes.terminal.sync_status import report
+
+        result = report()
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result.get("ok") else 2
     if a.command == "source":
         from hermes_kubernetes.source.editable import ensure
 
