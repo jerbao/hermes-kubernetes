@@ -50,9 +50,12 @@ class SocketRuntime:
 
     def run(self, operation, changes=None):
         (self.root / ".local/versioning").mkdir(mode=0o700, parents=True, exist_ok=True)
-        source = 'import sys\nsys.path.insert(0,"/opt/hermes-personal")\n' + (
-            self.bundle / "hermes_kubernetes/state/versioning.py"
-        ).read_text().replace("from __future__ import annotations\n", "")
+        source = (
+            '__name__ = "hermes_versioning_export"\nimport sys\nsys.path.insert(0,"/opt/hermes-personal")\n'
+            + (self.bundle / "hermes_kubernetes/state/versioning.py")
+            .read_text()
+            .replace("from __future__ import annotations\n", "")
+        )
         request = None
         if operation == "capture":
             changes = {name: item["sha256"] for name, item in projection(self.root).items()}
@@ -101,8 +104,7 @@ class SocketRuntime:
             + "\n"
         )
         # Execute the versioned exporter on the active PVC via the existing private socket.
-        # Avoid the CLI main branch in the embedded module.
-        code = code.replace("if __name__=='__main__':main()", "")
+        # The exporter runs under a module name, so its CLI guard stays inactive.
         stdout, stderr = io.BytesIO(), io.BytesIO()
         result = self.client.execute(
             ["/opt/hermes/.venv/bin/python", "-c", code], stdout, stderr, timeout=240
