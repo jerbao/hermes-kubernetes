@@ -19,6 +19,22 @@ from hermes_kubernetes.quota.server import Cache, handler
 
 
 class UsageTests(unittest.TestCase):
+    def test_optional_claude_model_windows_are_reported_only_when_present(self):
+        base = {"five_hour": {"utilization": 20}, "seven_day": {"utilization": 40}}
+        self.assertEqual(
+            [item["label"] for item in normalize("claude", base)], ["5 hours", "7 days"]
+        )
+        reported = {**base, "seven_day_fable": {"utilization": 15}, "seven_day_other": None}
+        self.assertEqual(
+            normalize("claude", reported)[-1],
+            {
+                "label": "Fable · 7 days",
+                "used_percent": 15,
+                "resets_at": None,
+                "scope": "model",
+            },
+        )
+
     def test_authoritative_windows_and_fractional_percentages(self):
         result = normalize(
             "codex",

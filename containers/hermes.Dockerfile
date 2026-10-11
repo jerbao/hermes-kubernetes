@@ -15,6 +15,9 @@ RUN test "$(uname -m)" = x86_64 && \
 RUN /opt/hermes/.venv/bin/python -c "from pathlib import Path; from pm.features import write_features, declared_extras; extras=['all','messaging','otlp','anthropic','bedrock','azure-identity','matrix','google-chat']; assert set(extras) <= set(declared_extras(Path('/opt/hermes'))); write_features(extras, Path('/opt/hermes'))"
 COPY source-provenance.json install-stamp.json /opt/hermes/
 COPY hermes_kubernetes/ /opt/hermes-personal/hermes_kubernetes/
+# Native launchers deliberately ignore PYTHONPATH (-I). Make the distribution
+# importable from their explicit source root, including new PM generations.
+RUN ln -s /opt/hermes-personal/hermes_kubernetes /opt/hermes/hermes_kubernetes
 ENV PYTHONPATH=/opt/hermes-personal:/opt/hermes
 COPY config/rclone.lock.json /opt/hermes-personal/rclone.lock.json
 RUN /opt/hermes/.venv/bin/python /opt/hermes-personal/hermes_kubernetes/backup/tools.py \

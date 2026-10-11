@@ -1,0 +1,154 @@
+diff --git a/apps/desktop/src/app/shell/model-menu-panel.test.tsx b/apps/desktop/src/app/shell/model-menu-panel.test.tsx
+index 5b1f3088..e2505540 100644
+--- a/apps/desktop/src/app/shell/model-menu-panel.test.tsx
++++ b/apps/desktop/src/app/shell/model-menu-panel.test.tsx
+@@ -84,6 +84,40 @@ function renderPanel(onSelectModel = vi.fn(), onFollowDefaultModel?: () => void)
+   return { onSelectModel, content }
+ }
+ 
++it('keeps custom proxy account quotas visible through the actual model menu', async () => {
++  const reset = new Date(Date.now() + 5 * 3600_000).toISOString()
++  getGlobalModelOptions.mockResolvedValue({
++    providers: [
++      {
++        slug: 'proxy-example',
++        name: 'Proxy subscription',
++        models: ['example-model'],
++        is_user_defined: true,
++        usage: {
++          accounts: [
++            {
++              id: 'opaque',
++              label: 'Subscription',
++              state: 'ready',
++              windows: [
++                { label: '5 hours', used_percent: 54, resets_at: reset },
++                { label: '7 days', used_percent: 8, resets_at: reset }
++              ]
++            }
++          ]
++        }
++      }
++    ]
++  })
++  const { content } = renderPanel()
++  const chip = await content.findByText('1 account')
++  fireEvent.pointerMove(chip, { pointerType: 'mouse' })
++  const tip = await screen.findByRole('tooltip')
++  expect(tip.textContent).toContain('5 hours: 46% left, resets ')
++  expect(tip.textContent).toContain('7 days: 92% left, resets ')
++  expect(content.getByText('Proxy subscription')).toBeTruthy()
++})
++
+ describe('ModelMenuPanel MoA presets', () => {
+   it('selecting a MoA preset switches PERSISTENTLY via onSelectModel (not the one-shot dispatch)', async () => {
+     const { content, onSelectModel } = renderPanel()
+diff --git a/apps/desktop/src/components/provider-status-chip.test.tsx b/apps/desktop/src/components/provider-status-chip.test.tsx
+index 64289654..852ae63d 100644
+--- a/apps/desktop/src/components/provider-status-chip.test.tsx
++++ b/apps/desktop/src/components/provider-status-chip.test.tsx
+@@ -76,3 +76,38 @@ it('only presents a pool-wide wall when every account is limited, preserving unk
+   expect(screen.getByText('10 accounts')).toBeTruthy()
+   expect(screen.queryByText(/Limited until|accounts limited/)).toBeNull()
+ })
++
++it('shows every reported live window and its reset, including optional model-specific limits', async () => {
++  vi.spyOn(Date, 'now').mockReturnValue(NOW)
++  const entry = account(0, false)
++  entry.windows = [
++    { label: '5 hours', used_percent: 54, resets_at: iso(90) },
++    { label: '7 days', used_percent: 8, resets_at: iso(1440) },
++    { label: 'Fable · 7 days', used_percent: 25, resets_at: iso(1440), scope: 'model' },
++    { label: 'Expired', used_percent: 100, resets_at: iso(-10) }
++  ]
++  render(view(provider([entry])))
++  fireEvent.pointerMove(screen.getByText('1 account'), { pointerType: 'mouse' })
++  const tip = await screen.findByRole('tooltip')
++
++  expect(tip.querySelectorAll('[data-quota-window]')).toHaveLength(3)
++  expect(tip.textContent).toContain('5 hours: 46% left, resets ')
++  expect(tip.textContent).toContain('7 days: 92% left, resets ')
++  expect(tip.textContent).toContain('Fable · 7 days: 75% left, resets ')
++  expect(tip.textContent).not.toContain('Expired')
++})
++
++it('does not synthesize missing windows and keeps unavailable accounts explicit', async () => {
++  vi.spyOn(Date, 'now').mockReturnValue(NOW)
++  const entry = account(0, false)
++  entry.windows = [{ label: '5 hours', used_percent: 12, resets_at: null }]
++  const unavailable = { ...account(1, false), state: 'unknown' as const, windows: [] }
++  render(view(provider([entry, unavailable])))
++  fireEvent.pointerMove(screen.getByText('2 accounts'), { pointerType: 'mouse' })
++  const tip = await screen.findByRole('tooltip')
++
++  expect(tip.querySelectorAll('[data-quota-window]')).toHaveLength(1)
++  expect(tip.textContent).toContain('5 hours: 88% left')
++  expect(tip.textContent).toContain('Usage unavailable')
++  expect(tip.textContent).not.toMatch(/7 days|Fable|resets/)
++})
+diff --git a/apps/desktop/src/components/provider-status-chip.tsx b/apps/desktop/src/components/provider-status-chip.tsx
+index bf463b1d..9aace462 100644
+--- a/apps/desktop/src/components/provider-status-chip.tsx
++++ b/apps/desktop/src/components/provider-status-chip.tsx
+@@ -49,11 +49,10 @@ function poolChipState(provider: ModelOptionProvider, copy: ModelMenuTranslation
+   }
+ }
+ 
+-/** A scan-first account list: each row shows its tightest live window as a bar, with exact
+- *  remaining/reset beside it. Unknown and signed-out rows stay empty rather than looking full. */
++/** Show every reported live window per account; never fabricate missing subscription limits. */
+ function PoolUsageTip({ accounts, copy }: { accounts: PoolAccountView[]; copy: ModelMenuTranslations }) {
+   return (
+-    <span className="grid w-60 gap-2 py-0.5">
++    <span className="grid w-80 gap-3 py-0.5">
+       {accounts.map((entry, index) => {
+         const tightest = entry.windows[0]
+         const reset = (ms: null | number) => (ms === null ? null : formatReset(ms))
+@@ -89,18 +88,36 @@ function PoolUsageTip({ accounts, copy }: { accounts: PoolAccountView[]; copy: M
+                 {status}
+               </span>
+             </span>
+-            <span
+-              aria-hidden
+-              className={cn(
+-                'h-1 overflow-hidden rounded-full bg-current/15',
+-                unavailable && 'bg-transparent outline-1 outline-dashed outline-current/25'
+-              )}
+-            >
++            {entry.windows.map((window, windowIndex) => (
++              <span className="grid gap-1" data-quota-window key={`${window.label}:${windowIndex}`}>
++                <span className="tabular-nums opacity-80">
++                  {copy.usageWindow(window.label, window.remaining, reset(window.resetMs))}
++                </span>
++                <span aria-hidden className="h-1 overflow-hidden rounded-full bg-current/15">
++                  <span
++                    className={cn(
++                      'block h-full rounded-full bg-current/55',
++                      window.remaining <= USAGE_NOTICE_PERCENT && 'bg-amber-300 dark:bg-amber-700'
++                    )}
++                    style={{ width: `${window.remaining}%` }}
++                  />
++                </span>
++              </span>
++            ))}
++            {entry.windows.length === 0 && (
+               <span
+-                className={cn('block h-full rounded-full bg-current/55', low && 'bg-amber-300 dark:bg-amber-700')}
+-                style={{ width: `${width}%` }}
+-              />
+-            </span>
++                aria-hidden
++                className={cn(
++                  'h-1 overflow-hidden rounded-full bg-current/15',
++                  unavailable && 'bg-transparent outline-1 outline-dashed outline-current/25'
++                )}
++              >
++                <span
++                  className={cn('block h-full rounded-full bg-current/55', low && 'bg-amber-300 dark:bg-amber-700')}
++                  style={{ width: `${width}%` }}
++                />
++              </span>
++            )}
+           </span>
+         )
+       })}

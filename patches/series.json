@@ -85,6 +85,16 @@
       "native_tests": [
         "tests/hermes_cli/test_proxy_subscription_usage.py"
       ]
+    },
+    {
+      "path": "patches/0007-desktop-quota-windows.patch",
+      "description": "Show every reported subscription window in the Desktop account tooltip",
+      "files": [
+        "apps/desktop/src/components/provider-status-chip.tsx",
+        "apps/desktop/src/components/provider-status-chip.test.tsx",
+        "apps/desktop/src/app/shell/model-menu-panel.test.tsx"
+      ],
+      "native_tests": []
     }
   ]
 }

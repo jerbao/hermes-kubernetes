@@ -64,7 +64,11 @@ from hermes_cli._launchers import runtime_command
 
 command = runtime_command(
     Path("/opt/hermes"),
-    code='import hermes_yaml; print("fresh-launch-ok")',
+    code=(
+        "import hermes_yaml; "
+        "from hermes_kubernetes.quota.inventory import apply_usage; "
+        'print("fresh-launch-ok")'
+    ),
     home=home,
     python=sys.executable,
 )

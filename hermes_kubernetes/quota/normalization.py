@@ -63,12 +63,19 @@ def normalize(provider, payload):
                     window(prefix + label, item.get("used_percent"), item.get("reset_at"), scope)
                 )
     elif provider == "claude":
-        for key, label in (
-            ("five_hour", "5 hours"),
-            ("seven_day", "7 days"),
-            ("seven_day_opus", "Opus · 7 days"),
-            ("seven_day_sonnet", "Sonnet · 7 days"),
-        ):
+        labels = dict(
+            (
+                ("five_hour", "5 hours"),
+                ("seven_day", "7 days"),
+                ("seven_day_opus", "Opus · 7 days"),
+                ("seven_day_sonnet", "Sonnet · 7 days"),
+            )
+        )
+        # Include optional model windows only when the provider actually reports them.
+        for key in payload:
+            if key.startswith("seven_day_") and key not in labels:
+                labels[key] = key.removeprefix("seven_day_").replace("_", " ").title() + " · 7 days"
+        for key, label in labels.items():
             item = payload.get(key)
             if isinstance(item, dict):
                 # Claude utilization is a percentage, including fractional percentages.
@@ -77,7 +84,7 @@ def normalize(provider, payload):
                         label,
                         item.get("utilization"),
                         item.get("resets_at"),
-                        "model" if key in {"seven_day_opus", "seven_day_sonnet"} else "account",
+                        "model" if key.startswith("seven_day_") else "account",
                     )
                 )
     elif provider == "antigravity":

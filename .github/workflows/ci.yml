@@ -10,6 +10,18 @@ concurrency:
   group: distribution-ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  desktop-quota:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: python -m hermes_kubernetes.source.desktop --install --test
   project:
     runs-on: ubuntu-latest
     timeout-minutes: 30

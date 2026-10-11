@@ -60,6 +60,35 @@ come from provider data. Telemetry never changes model routing or benches accoun
 Gemini's reported buckets may omit other enforced limits; a displayed remaining
 quota does not guarantee that a generation request will be accepted.
 
+The Desktop picker shows an account badge beside each provider heading. Hover the
+badge to see **every reported live window**, its remaining percentage, a bar and
+its reset time. The usual five-hour and seven-day limits are independent rows.
+Optional model-specific limits (including Fable) appear only when returned by the
+provider; absent limits are never synthesized. Unknown accounts remain explicit.
+
+Desktop and the Kubernetes backend are separate artifacts. Updating the backend
+cannot add UI components to an older installed Desktop application. Build the
+patched client from this distribution rather than assuming the official desktop
+binary contains its patches:
+
+```sh
+python -m hermes_kubernetes.source.desktop --install --test --pack
+# macOS: replace the application and reopen it, preserving its user data.
+python -m hermes_kubernetes.source.desktop --install-app /Applications/Hermes.app
+```
+
+Other platforms can run the native `npm run builder` targets in the prepared
+`hermes-agent/apps/desktop` checkout. Updating Desktop directly from upstream may
+replace distribution UI patches; rebuild the client after adopting changes to
+`patches/0007-desktop-quota-windows.patch`. The distribution CI exercises both the
+account component and the actual model menu; no inference calls are required.
+
+Native Hermes launchers use isolated Python and deliberately ignore `PYTHONPATH`.
+The container links the distribution package into its explicit source root so
+the running API can import this adapter in every dependency generation. Image
+acceptance checks that import through the actual native launcher, rather than
+relying on a `kubectl exec python` process with a different import path.
+
 Antigravity credentials are grouped under the configured `gemini` route, while
 using `retrieveUserQuotaSummary` and the credential's own project internally.
 The adapter does not derive weekly usage from `fetchAvailableModels`, which only
