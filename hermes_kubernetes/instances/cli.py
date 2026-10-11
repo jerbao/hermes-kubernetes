@@ -64,6 +64,10 @@ def main():
     update.add_argument("--version", default="latest")
     update.add_argument("--check-only", action="store_true")
     commands.add_parser("check")
+    identity = commands.add_parser("git-identity")
+    identity.add_argument("--check", action="store_true")
+    identity.add_argument("--coauthor-name", default="Hermes")
+    identity.add_argument("--coauthor-email")
     setup = commands.add_parser("setup")
     setup.add_argument(
         "action", choices=["init", "plan", "configure", "install", "drive-auth", "connect"]
@@ -72,6 +76,11 @@ def main():
     setup.add_argument("--infra", action="store_true")
     a = p.parse_args()
     root = a.root.resolve()
+    if a.command == "git-identity":
+        from hermes_kubernetes.terminal.git_identity import configure, report
+
+        print(json.dumps(report() if a.check else configure(a.coauthor_name, a.coauthor_email)))
+        return 0
     if a.command == "setup":
         from hermes_kubernetes.installation.cli import dispatch
 

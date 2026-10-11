@@ -8,6 +8,18 @@ Kubernetes. The private instance Git repository is `~/.hermes` on the terminal;
 the active `HERMES_HOME` is on the pod's PVC. Similar paths do not mean that the
 terminal and pod share a Python runtime or a writable core installation.
 
+Run workspace Git commands in the native SSH terminal as its configured owner.
+`runtime exec` runs inside the pod with a different UID; it is not the place to
+stage or commit terminal projects. Do not use `su` or disable Git ownership checks
+to compensate for choosing the wrong executor. OS tools such as `gh` belong to
+the terminal's reproducible provisioning, and authentication belongs to that user.
+
+Keep the owner's existing Git author identity. If assistant attribution is
+configured, use `git hermes-commit` with normal commit arguments. Inspect it with
+`python3 hermes.py git-identity --check`; configure it using `--coauthor-name` and
+`--coauthor-email` only with an existing identity supplied by the owner. Never
+invent an email or reuse another assistant's identity to obtain its avatar.
+
 ## Inspect before administering the active runtime
 
 ```sh

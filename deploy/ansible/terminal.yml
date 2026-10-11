@@ -36,7 +36,7 @@
           - not existing.stat.exists or home_fs.stdout | trim == 'fuse.ceph-fuse'
     - name: Install reconstructible terminal packages
       ansible.builtin.apt:
-        name: [ceph-fuse, fuse3, git, python3, python3-venv, rsync, sudo, openssh-server, docker.io, docker-compose-v2]
+        name: [ceph-fuse, fuse3, git, gh, python3, python3-venv, rsync, sudo, openssh-server, docker.io, docker-compose-v2]
         state: present
         update_cache: true
     - name: Create the terminal user with a stable UID
