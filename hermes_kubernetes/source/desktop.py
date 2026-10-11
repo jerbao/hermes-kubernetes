@@ -65,6 +65,23 @@ def install_app(source, destination):
         staged = Path(folder) / destination.name
         previous = Path(folder) / "previous.app"
         subprocess.run(["ditto", str(candidates[0]), str(staged)], check=True)
+        # Source builds have no Apple Developer identity. Seal the locally built
+        # bundle with an ad-hoc signature and upstream's Electron entitlements.
+        subprocess.run(
+            [
+                "codesign",
+                "--force",
+                "--deep",
+                "--sign",
+                "-",
+                "--options",
+                "runtime",
+                "--entitlements",
+                str(source / "apps/desktop/electron/entitlements.mac.plist"),
+                str(staged),
+            ],
+            check=True,
+        )
         subprocess.run(["codesign", "--verify", "--deep", "--strict", str(staged)], check=True)
         subprocess.run(["osascript", "-e", 'tell application "Hermes" to quit'], check=True)
         if destination.exists():
