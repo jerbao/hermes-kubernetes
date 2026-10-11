@@ -12,7 +12,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from hermes_kubernetes.quota.configuration import prepare
-from hermes_kubernetes.quota.inventory import usage_for, apply_usage
+from hermes_kubernetes.quota.inventory import usage_for, apply_usage, provider_usage
 from hermes_kubernetes.quota.normalization import normalize
 from hermes_kubernetes.quota.proxy import ProxyClient
 from hermes_kubernetes.quota.server import Cache, handler
@@ -256,6 +256,37 @@ class UsageTests(unittest.TestCase):
             apply_usage(rows)
         self.assertEqual(rows[0]["usage"]["accounts"][0]["id"], "a")
         self.assertEqual(rows[1]["usage"], {"windows": []})
+
+    def test_model_usage_reads_cached_proxy_snapshot_without_catalog_discovery(self):
+        import sys
+        from types import ModuleType
+
+        config = ModuleType("hermes_cli.config")
+        config.load_config = lambda: {
+            "proxy_usage": {
+                "url": "http://quota:8318",
+                "providers": {"cli-proxy-google": "gemini", "cli-proxy-openai": "codex"},
+            }
+        }
+        payload = {
+            "schema": 1,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "providers": {
+                "gemini": {"accounts": [{"id": "g", "state": "ready", "windows": []}]},
+                "codex": {"accounts": [{"id": "o", "state": "limited", "windows": []}]},
+                "claude": {"accounts": [{"id": "ignored", "state": "ready", "windows": []}]},
+            },
+        }
+        with (
+            patch.dict(sys.modules, {"hermes_cli.config": config}),
+            patch("hermes_kubernetes.quota.inventory.request_json", return_value=payload) as read,
+        ):
+            result = provider_usage()
+
+        read.assert_called_once_with("http://quota:8318/v1/usage", timeout=2)
+        self.assertEqual(result["providers"]["cli-proxy-google"]["accounts"][0]["id"], "g")
+        self.assertEqual(result["providers"]["cli-proxy-openai"]["accounts"][0]["state"], "limited")
+        self.assertNotIn("claude", result["providers"])
 
 
 if __name__ == "__main__":

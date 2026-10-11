@@ -89,6 +89,34 @@ def usage_for(payload, family):
     return {"accounts": accounts}
 
 
+def provider_usage():
+    """Read the proxy's already-cached subscription snapshot by custom-provider slug.
+
+    Unlike ``apply_usage``, this does not add a second process-local cache. The sidecar refreshes
+    upstream usage in its own bounded background loop; this read-only entry point lets short-lived
+    UI surfaces refresh their quota rows without rebuilding or probing the model catalog.
+    """
+    from hermes_cli.config import load_config
+
+    config = load_config().get("proxy_usage") or {}
+    mapping = config.get("providers") or {}
+    url = config.get("url")
+    if not url or not isinstance(mapping, dict):
+        return {"providers": {}}
+
+    payload = request_json(valid_url(url) + "/v1/usage", timeout=2)
+    if not isinstance(payload, dict) or payload.get("schema") != 1:
+        raise ValueError("Unsupported quota response")
+    providers = {
+        slug: usage_for(payload, family)
+        for slug, family in mapping.items()
+        if isinstance(slug, str)
+        and isinstance(family, str)
+        and family in {"codex", "gemini", "claude"}
+    }
+    return {"providers": providers, "fetched_at": payload.get("fetched_at")}
+
+
 def apply_usage(rows):
     from hermes_cli.config import load_config
     from hermes_constants import get_hermes_home

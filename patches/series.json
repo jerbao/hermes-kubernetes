@@ -95,6 +95,30 @@
         "apps/desktop/src/app/shell/model-menu-panel.test.tsx"
       ],
       "native_tests": []
+    },
+    {
+      "path": "patches/0008-quota-refresh-and-route-reconciliation.patch",
+      "description": "Refresh subscription usage independently and reconcile stale provider/model pairs by unique catalog ownership",
+      "files": [
+        "hermes_cli/inventory.py",
+        "hermes_cli/model_switch_providers.py",
+        "hermes_cli/config.py",
+        "tests/hermes_cli/test_proxy_subscription_usage.py",
+        "tests/hermes_cli/test_user_providers_model_switch.py",
+        "tui_gateway/contracts/config_free_tier_control.py",
+        "tui_gateway/methods_complete.py",
+        "apps/desktop/src/app/shell/model-catalog-menu.tsx",
+        "apps/desktop/src/app/shell/model-menu-panel.test.tsx",
+        "apps/desktop/src/app/shell/use-model-menu-controller.ts",
+        "apps/desktop/src/lib/model-options.ts",
+        "apps/desktop/src/lib/model-options.test.ts",
+        "apps/shared/src/gateway-contract.generated.ts",
+        "apps/shared/src/gateway-contract.openrpc.json"
+      ],
+      "native_tests": [
+        "tests/hermes_cli/test_proxy_subscription_usage.py",
+        "tests/hermes_cli/test_user_providers_model_switch.py"
+      ]
     }
   ]
 }

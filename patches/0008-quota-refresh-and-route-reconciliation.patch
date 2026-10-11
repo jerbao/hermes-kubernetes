@@ -1,0 +1,550 @@
+diff --git a/apps/desktop/src/app/shell/model-catalog-menu.tsx b/apps/desktop/src/app/shell/model-catalog-menu.tsx
+index 7e344a74..26b1f18a 100644
+--- a/apps/desktop/src/app/shell/model-catalog-menu.tsx
++++ b/apps/desktop/src/app/shell/model-catalog-menu.tsx
+@@ -36,7 +36,13 @@ import type { HermesGateway } from '@/hermes'
+ import { useI18n } from '@/i18n'
+ import { triggerHaptic } from '@/lib/haptics'
+ import { isSubmitEnter } from '@/lib/ime'
+-import { catalogProviderMatches, modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
++import {
++  catalogProviderMatches,
++  modelOptionsQueryKey,
++  modelUsageQueryKey,
++  requestModelOptions,
++  requestModelUsage
++} from '@/lib/model-options'
+ import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
+ import { accountResetMs, formatReset, modelResetMs } from '@/lib/provider-limit'
+ import { reasoningEffortLabel } from '@/lib/reasoning-effort'
+@@ -274,6 +280,17 @@ export function ModelCatalogMenu({
+     queryFn: (): Promise<ModelOptionsResult> => requestModelOptions({ gateway, profile, request, sessionId })
+   })
+ 
++  // Quota snapshots have their own lightweight RPC and cadence. Refreshing
++  // usage must not invalidate the much heavier provider/model catalog.
++  const modelUsage = useQuery({
++    queryKey: modelUsageQueryKey(profile, ownerConnectionId),
++    queryFn: () => requestModelUsage({ gateway, profile, request }),
++    enabled: Boolean(gateway || request),
++    refetchInterval: 30_000,
++    refetchOnWindowFocus: true,
++    retry: false
++  })
++
+   const loading = modelOptions.isPending && !modelOptions.data
+ 
+   // Every local-models read in this menu sits behind the --local launch
+@@ -303,7 +320,15 @@ export function ModelCatalogMenu({
+ 
+   const error = queryErrorMessage(modelOptions.error)
+ 
+-  const providers = modelOptions.data?.providers
++  const providers = useMemo(() => {
++    const catalog = modelOptions.data?.providers
++    const usageByProvider = modelUsage.data?.providers
++    if (!catalog || !usageByProvider) return catalog
++    return catalog.map(provider => {
++      const usage = usageByProvider[provider.slug]
++      return usage ? { ...provider, usage } : provider
++    })
++  }, [modelOptions.data?.providers, modelUsage.data?.providers])
+ 
+   // The catalog carries MoA presets as a virtual `moa` provider row. Keep it
+   // out of the main groups so presets never show up twice.
+diff --git a/apps/desktop/src/app/shell/model-menu-panel.test.tsx b/apps/desktop/src/app/shell/model-menu-panel.test.tsx
+index e2505540..0b0d2204 100644
+--- a/apps/desktop/src/app/shell/model-menu-panel.test.tsx
++++ b/apps/desktop/src/app/shell/model-menu-panel.test.tsx
+@@ -1,5 +1,5 @@
+ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
++import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+ 
+ import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu'
+@@ -17,6 +17,7 @@ beforeAll(() => {
+ })
+ 
+ const getGlobalModelOptions = vi.fn()
++const getGlobalModelUsage = vi.fn()
+ 
+ vi.mock('@/hermes', () => ({
+   getGlobalModelOptions: (...args: unknown[]) => getGlobalModelOptions(...args),
+@@ -49,6 +50,7 @@ beforeEach(() => {
+   $collapsedProviders.set([])
+   $customModels.set([])
+   getGlobalModelOptions.mockResolvedValue({ providers: MOCK_PROVIDERS })
++  getGlobalModelUsage.mockResolvedValue({ providers: {} })
+ })
+ 
+ afterEach(() => {
+@@ -59,10 +61,13 @@ afterEach(() => {
+ function renderPanel(onSelectModel = vi.fn(), onFollowDefaultModel?: () => void) {
+   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+ 
+-  const requestGateway = vi.fn(async (method: string) => {
++  const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+     if (method === 'model.options') {
+       return getGlobalModelOptions()
+     }
++    if (method === 'model.usage') {
++      return getGlobalModelUsage()
++    }
+ 
+     throw new Error(`unexpected gateway method: ${method}`)
+   })
+@@ -81,9 +86,37 @@ function renderPanel(onSelectModel = vi.fn(), onFollowDefaultModel?: () => void)
+     </QueryClientProvider>
+   )
+ 
+-  return { onSelectModel, content }
++  return { onSelectModel, content, requestGateway }
+ }
+ 
++it('loads and refreshes subscription usage separately from the model catalog', async () => {
++  const reset = new Date(Date.now() + 5 * 3600_000).toISOString()
++  getGlobalModelOptions.mockResolvedValue({
++    providers: [{ slug: 'proxy-example', name: 'Proxy subscription', models: ['example-model'], is_user_defined: true }]
++  })
++  getGlobalModelUsage.mockResolvedValue({
++    providers: {
++      'proxy-example': {
++        accounts: [
++          {
++            id: 'opaque',
++            label: 'Subscription',
++            state: 'ready',
++            windows: [{ label: '5 hours', used_percent: 54, resets_at: reset }]
++          }
++        ]
++      }
++    }
++  })
++  const { content, requestGateway } = renderPanel()
++  const chip = await content.findByText('1 account')
++  fireEvent.pointerMove(chip, { pointerType: 'mouse' })
++  expect((await screen.findByRole('tooltip')).textContent).toContain('5 hours: 46% left, resets ')
++  await waitFor(() => expect(requestGateway).toHaveBeenCalledWith('model.usage', { profile: 'default' }))
++  expect(requestGateway).toHaveBeenCalledWith('model.options', { session_id: 'runtime-1', explicit_only: true, profile: 'default' })
++  expect(requestGateway).not.toHaveBeenCalledWith('model.options', expect.objectContaining({ refresh: true }))
++})
++
+ it('keeps custom proxy account quotas visible through the actual model menu', async () => {
+   const reset = new Date(Date.now() + 5 * 3600_000).toISOString()
+   getGlobalModelOptions.mockResolvedValue({
+diff --git a/apps/desktop/src/app/shell/use-model-menu-controller.ts b/apps/desktop/src/app/shell/use-model-menu-controller.ts
+index f0657aa0..f3e911c9 100644
+--- a/apps/desktop/src/app/shell/use-model-menu-controller.ts
++++ b/apps/desktop/src/app/shell/use-model-menu-controller.ts
+@@ -2,12 +2,12 @@ import { DEFAULT_REASONING_EFFORT, type ModelOptionsResult } from '@hermes/share
+ import { useStore } from '@nanostores/react'
+ import { useQuery } from '@tanstack/react-query'
+ import { atom } from 'nanostores'
+-import { useRef } from 'react'
++import { useEffect, useRef } from 'react'
+ 
+ import { useSessionView } from '@/app/chat/session-view'
+ import type { HermesGateway } from '@/hermes'
+ import { useI18n } from '@/i18n'
+-import { modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
++import { modelOptionsQueryKey, requestModelOptions, uniqueConfiguredModelProvider } from '@/lib/model-options'
+ import { currentPickerSelection } from '@/lib/model-status-label'
+ import {
+   $modelPresets,
+@@ -95,6 +95,24 @@ export function useModelMenuController({
+     modelOptions.data
+   )
+ 
++  const reconciledSelection = useRef('')
++  const uniqueOwner = uniqueConfiguredModelProvider(modelOptions.data?.providers, optionsProvider, optionsModel)
++  useEffect(() => {
++    if (!uniqueOwner) {
++      reconciledSelection.current = ''
++      return
++    }
++
++    const key = `${ownerConnectionId ?? ''}\u0000${profile}\u0000${activeSessionId ?? ''}\u0000${optionsProvider}\u0000${optionsModel}\u0000${uniqueOwner}`
++    if (reconciledSelection.current === key) return
++    reconciledSelection.current = key
++
++    // Persist the corrected provider/model pair through the same guarded
++    // session-switch path as a user selection. This handles a stale UI pick
++    // without changing route credentials or guessing from model-name family.
++    void onSelectModel({ model: optionsModel, provider: uniqueOwner, sessionId: activeSessionId || null })
++  }, [activeSessionId, onSelectModel, optionsModel, optionsProvider, ownerConnectionId, profile, uniqueOwner])
++
+   const hostScope = `${ownerConnectionId ?? ''}::${profile}`
+   const latestHostScope = useRef(hostScope)
+   latestHostScope.current = hostScope
+@@ -182,7 +200,7 @@ export function useModelMenuController({
+       fast: currentFastMode,
+       serviceTier: currentServiceTier,
+       model: optionsModel,
+-      provider: optionsProvider
++      provider: uniqueOwner ?? optionsProvider
+     },
+ 
+     presetFor: (provider, model) => modelPresets[modelPresetKey(provider, model)] ?? {},
+diff --git a/apps/desktop/src/lib/model-options.test.ts b/apps/desktop/src/lib/model-options.test.ts
+index 846cf74c..2d26a854 100644
+--- a/apps/desktop/src/lib/model-options.test.ts
++++ b/apps/desktop/src/lib/model-options.test.ts
+@@ -8,7 +8,8 @@ import {
+   customDefaultSupersedesPick,
+   moaPickRemoved,
+   modelOptionsQueryKey,
+-  requestModelOptions
++  requestModelOptions,
++  uniqueConfiguredModelProvider
+ } from './model-options'
+ 
+ const globalOptions = { model: 'hermes-4', provider: 'nous', providers: [] }
+@@ -264,6 +265,35 @@ describe('moaPickRemoved', () => {
+   })
+ })
+ 
++describe('uniqueConfiguredModelProvider', () => {
++  it('repairs a stale OpenAI pick when a current model is injected but Google uniquely owns its exact id', () => {
++    const providers = [
++      { slug: 'cli-proxy-openai', name: 'OpenAI', models: ['gemini-3.8-flash-high'], injected_current_model: 'gemini-3.8-flash-high' },
++      { slug: 'cli-proxy-google', name: 'Google', models: ['gemini-3.8-flash-high'] }
++    ]
++
++    expect(uniqueConfiguredModelProvider(providers, 'cli-proxy-openai', 'gemini-3.8-flash-high')).toBe(
++      'cli-proxy-google'
++    )
++  })
++
++  it('keeps a valid Google Claude route and refuses duplicate ids', () => {
++    const providers = [
++      {
++        slug: 'cli-proxy-openai',
++        name: 'OpenAI',
++        models: ['claude-sonnet-4-6'],
++        injected_current_model: 'claude-sonnet-4-6'
++      },
++      { slug: 'cli-proxy-google', name: 'Google', models: ['claude-sonnet-4-6'] },
++      { slug: 'cli-proxy-anthropic', name: 'Anthropic', models: ['claude-sonnet-4-6'] }
++    ]
++
++    expect(uniqueConfiguredModelProvider(providers, 'cli-proxy-google', 'claude-sonnet-4-6')).toBeUndefined()
++    expect(uniqueConfiguredModelProvider(providers, 'cli-proxy-openai', 'claude-sonnet-4-6')).toBeUndefined()
++  })
++})
++
+ describe('customDefaultSupersedesPick', () => {
+   it('flags a bare pick the default has migrated to its custom-provider form (#81922)', () => {
+     // The wire payload for `nvidia` builds the NATIVE provider and drops the
+diff --git a/apps/desktop/src/lib/model-options.ts b/apps/desktop/src/lib/model-options.ts
+index 2c8635c7..5c7e87fd 100644
+--- a/apps/desktop/src/lib/model-options.ts
++++ b/apps/desktop/src/lib/model-options.ts
+@@ -28,6 +28,28 @@ export function findCatalogProvider<T extends CatalogProviderIdentity>(
+   return providers.find(row => catalogProviderMatches(row, currentProvider))
+ }
+ 
++/** Resolve a stale provider only when the exact current model has one
++ * configured catalog owner. The current row may contain a visibility-only
++ * injected model (Hermes marks it with `injected_current_model`); that row is
++ * not ownership evidence. Duplicate ids remain ambiguous and keep their route.
++ */
++export function uniqueConfiguredModelProvider(
++  providers: readonly ModelOptionProvider[] | null | undefined,
++  currentProvider: string,
++  model: string
++): string | undefined {
++  if (!providers || !currentProvider || !model) return undefined
++
++  const current = findCatalogProvider(providers, currentProvider)
++  if (!current || current.injected_current_model !== model) return undefined
++
++  const owners = providers.filter(
++    provider => provider.models?.includes(model) && provider.injected_current_model !== model
++  )
++
++  return owners.length === 1 && owners[0].slug !== current.slug ? owners[0].slug : undefined
++}
++
+ /** The catalog's option support for the current pick, or undefined while the
+  *  catalog is loading / doesn't say. Callers treat undefined as "assume
+  *  reasoning" so controls never flicker away during the fetch. */
+@@ -117,6 +139,41 @@ interface ModelOptionsRequest {
+   sessionId?: null | string
+ }
+ 
++export interface ModelUsageResult {
++  providers: Record<string, NonNullable<ModelOptionProvider['usage']>>
++  fetched_at?: null | string
++}
++
++interface ModelUsageRequest {
++  gateway?: HermesGateway
++  profile?: null | string
++  request?: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
++}
++
++export function modelUsageQueryKey(profile: null | string | undefined, ownerConnectionId?: null | string) {
++  const profileKey = (profile ?? '').trim() || 'default'
++  const ownerKey = (ownerConnectionId ?? '').trim()
++
++  return ['model-usage', profileKey, ...(ownerKey ? ['owner', ownerKey] : [])] as const
++}
++
++export async function requestModelUsage({ gateway, profile, request }: ModelUsageRequest): Promise<ModelUsageResult> {
++  const dispatch = request ?? (gateway ? gateway.request.bind(gateway) : null)
++
++  if (!dispatch) {
++    return { providers: {} }
++  }
++
++  const params: Record<string, unknown> = {}
++  const profileKey = (profile ?? '').trim()
++
++  if (profileKey) {
++    params.profile = profileKey
++  }
++
++  return dispatch<ModelUsageResult>('model.usage', params)
++}
++
+ export function modelOptionsQueryKey(
+   profile: null | string | undefined,
+   sessionId?: null | string,
+diff --git a/apps/shared/src/gateway-contract.generated.ts b/apps/shared/src/gateway-contract.generated.ts
+index 3c7b1b5b..3504a640 100644
+--- a/apps/shared/src/gateway-contract.generated.ts
++++ b/apps/shared/src/gateway-contract.generated.ts
+@@ -788,6 +788,7 @@ export interface ModelOptionProvider {
+   slug: string
+   name: string
+   models?: string[]
++  injected_current_model?: string | null
+   total_models?: number | null
+   is_current?: boolean | null
+   is_user_defined?: boolean | null
+@@ -853,6 +854,13 @@ export interface ProviderUsageAccount {
+   state: 'ready' | 'limited' | 'unknown' | 'unavailable'
+   resets_at?: string | null
+ }
++export interface ModelUsageParams {
++  profile?: string | null
++}
++export interface ModelUsageResult {
++  providers?: Record<string, ProviderUsage>
++  fetched_at?: string | null
++}
+ export interface ImageGenerateParams {
+   prompt?: string | null
+   aspect_ratio?: string | null
+@@ -5219,6 +5227,8 @@ export interface RpcMethods {
+   'model.options': { params: ModelOptionsParams; result: ModelOptionsResult }
+   /** Save an API key for a provider and return its refreshed inventory row. */
+   'model.save_key': { params: ModelSaveKeyParams; result: ModelSaveKeyResult }
++  /** Read cached subscription usage for configured custom providers without probing model catalogs. */
++  'model.usage': { params: ModelUsageParams; result: ModelUsageResult }
+   /** Create-or-read the backend-owned setup profile; the backend picks the name. */
+   'onboarding.ensure_setup_profile': { params: Params; result: OnboardingEnsureSetupProfileResult }
+   'onboarding.ensure_setup_session': { params: OnboardingEnsureSetupSessionParams; result: OnboardingEnsureSetupSessionResult }
+@@ -5622,6 +5632,7 @@ export const RPC_METHODS = [
+   'model.disconnect',
+   'model.options',
+   'model.save_key',
++  'model.usage',
+   'onboarding.ensure_setup_profile',
+   'onboarding.ensure_setup_session',
+   'onboarding.mark_seen',
+diff --git a/apps/shared/src/gateway-contract.openrpc.json b/apps/shared/src/gateway-contract.openrpc.json
+index fe5067d6..7d823b35 100644
+--- a/apps/shared/src/gateway-contract.openrpc.json
++++ b/apps/shared/src/gateway-contract.openrpc.json
+@@ -1986,6 +1986,24 @@
+         }
+       }
+     },
++    {
++      "name": "model.usage",
++      "summary": "Read cached subscription usage for configured custom providers without probing model catalogs.",
++      "params": [
++        {
++          "name": "params",
++          "schema": {
++            "$ref": "#/components/schemas/ModelUsageParams"
++          }
++        }
++      ],
++      "result": {
++        "name": "result",
++        "schema": {
++          "$ref": "#/components/schemas/ModelUsageResult"
++        }
++      }
++    },
+     {
+       "name": "onboarding.ensure_setup_profile",
+       "summary": "Create-or-read the backend-owned setup profile; the backend picks the name.",
+@@ -19385,6 +19403,18 @@
+             "title": "Models",
+             "type": "array"
+           },
++          "injected_current_model": {
++            "anyOf": [
++              {
++                "type": "string"
++              },
++              {
++                "type": "null"
++              }
++            ],
++            "default": null,
++            "title": "Injected Current Model"
++          },
+           "total_models": {
+             "anyOf": [
+               {
+@@ -19836,6 +19866,51 @@
+         "title": "ModelSaveKeyResult",
+         "type": "object"
+       },
++      "ModelUsageParams": {
++        "additionalProperties": false,
++        "properties": {
++          "profile": {
++            "anyOf": [
++              {
++                "type": "string"
++              },
++              {
++                "type": "null"
++              }
++            ],
++            "default": null,
++            "title": "Profile"
++          }
++        },
++        "title": "ModelUsageParams",
++        "type": "object"
++      },
++      "ModelUsageResult": {
++        "additionalProperties": false,
++        "properties": {
++          "providers": {
++            "additionalProperties": {
++              "$ref": "#/components/schemas/ProviderUsage"
++            },
++            "title": "Providers",
++            "type": "object"
++          },
++          "fetched_at": {
++            "anyOf": [
++              {
++                "type": "string"
++              },
++              {
++                "type": "null"
++              }
++            ],
++            "default": null,
++            "title": "Fetched At"
++          }
++        },
++        "title": "ModelUsageResult",
++        "type": "object"
++      },
+       "NoticePayload": {
+         "additionalProperties": false,
+         "description": "``tui_gateway/model_switch.py`` capability-refresh notice.",
+diff --git a/hermes_cli/model_switch_providers.py b/hermes_cli/model_switch_providers.py
+index 270b98cd..fd555055 100644
+--- a/hermes_cli/model_switch_providers.py
++++ b/hermes_cli/model_switch_providers.py
+@@ -1337,6 +1337,11 @@ def _finalize_picker_rows(results: list, user_providers, current_model: str) ->
+                 if _model_requires_account_discovery(row.get("slug"), current_model):
+                     break
+                 row["models"] = [current_model, *models]
++                # Tell clients this id is a visibility-only rescue, not evidence
++                # that the configured route owns it. They can safely repair a
++                # stale provider pick only when another configured row uniquely
++                # lists the exact id.
++                row["injected_current_model"] = current_model
+                 row["total_models"] = row.get("total_models", len(models)) + 1
+             break
+ 
+diff --git a/tests/hermes_cli/test_user_providers_model_switch.py b/tests/hermes_cli/test_user_providers_model_switch.py
+index 76a1bc6a..09a90ec1 100644
+--- a/tests/hermes_cli/test_user_providers_model_switch.py
++++ b/tests/hermes_cli/test_user_providers_model_switch.py
+@@ -630,6 +630,7 @@ def test_current_custom_model_is_surfaced_in_builtin_provider_row(monkeypatch):
+     row = next(p for p in providers if p["slug"] == "openrouter")
+     assert custom in row["models"], row["models"]
+     assert row["models"][0] == custom  # injected at the front
++    assert row["injected_current_model"] == custom
+     assert row["total_models"] == 3
+ 
+ 
+diff --git a/tui_gateway/contracts/config_free_tier_control.py b/tui_gateway/contracts/config_free_tier_control.py
+index ba390944..c4082888 100644
+--- a/tui_gateway/contracts/config_free_tier_control.py
++++ b/tui_gateway/contracts/config_free_tier_control.py
+@@ -453,6 +453,10 @@ class ModelOptionsParams(ProfileParams):
+     refresh: bool = False
+ 
+ 
++class ModelUsageParams(ProfileParams):
++    pass
++
++
+ # TODO(common): ModelPricing / ModelCapabilities / ModelOptionProvider are also the row shape of
+ # ``model.save_key``'s ``provider`` — the parent consolidates into contracts/common.py.
+ class ModelPricing(Result):
+@@ -540,6 +544,7 @@ class ModelOptionProvider(OpenModel):
+     slug: str
+     name: str
+     models: list[str] = Field(default_factory=list)
++    injected_current_model: str | None = None
+     total_models: int | None = None
+     is_current: bool | None = None
+     is_user_defined: bool | None = None
+@@ -568,8 +573,15 @@ class ModelOptionsResult(Result):
+     provider: str = ""
+ 
+ 
++class ModelUsageResult(Result):
++    providers: dict[str, ProviderUsage] = Field(default_factory=dict)
++    fetched_at: str | None = None
++
++
+ method("model.options", params=ModelOptionsParams, result=ModelOptionsResult,
+        doc="Provider/model inventory for the picker, layered over the session's live provider when given.")
++method("model.usage", params=ModelUsageParams, result=ModelUsageResult,
++       doc="Read cached subscription usage for configured custom providers without probing model catalogs.")
+ 
+ 
+ # ── image.generate ────────────────────────────────────────────────────────────────────────────
+diff --git a/tui_gateway/methods_complete.py b/tui_gateway/methods_complete.py
+index 91a4f96e..1d328799 100644
+--- a/tui_gateway/methods_complete.py
++++ b/tui_gateway/methods_complete.py
+@@ -369,6 +369,22 @@ def _(rid, params: dict) -> dict:
+         include_unconfigured=bool(params.get("include_unconfigured")), refresh=bool(params.get("refresh"))))
+ 
+ 
++@method("model.usage")
++@_profile_scoped
++@_catch(5039)
++def _(rid, params: dict) -> dict:
++    """Read only the proxy's cached quota snapshot; never probes provider model catalogs."""
++    try:
++        from hermes_kubernetes.quota.inventory import provider_usage
++    except ImportError:
++        return _ok(rid, {"providers": {}})
++    try:
++        return _ok(rid, provider_usage())
++    except (OSError, ValueError, TypeError, KeyError):
++        # Optional telemetry must not make a model picker unavailable.
++        return _ok(rid, {"providers": {}})
++
++
+ @method("model.save_key")
+ @_profile_scoped
+ @_catch(5034)

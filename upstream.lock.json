@@ -67,6 +67,15 @@
       "sha256": "0400f96add9815ca0f1a225ee6e0d3a182cc8304fe3123f392b42e7ec1cd04fa",
       "description": "Show every reported subscription window in the Desktop account tooltip",
       "native_tests": []
+    },
+    {
+      "path": "patches/0008-quota-refresh-and-route-reconciliation.patch",
+      "sha256": "09bc1218ffc585bd071081d66a3f0135619afa9821dae3fb4514eaf0b96d4515",
+      "description": "Refresh subscription usage independently and reconcile stale provider/model pairs by unique catalog ownership",
+      "native_tests": [
+        "tests/hermes_cli/test_proxy_subscription_usage.py",
+        "tests/hermes_cli/test_user_providers_model_switch.py"
+      ]
     }
   ],
   "native_tests": [
@@ -81,6 +90,7 @@
     "tests/agent/test_moa_slot_api_mode.py",
     "tests/tools/test_mcp_stdio_executor.py",
     "tests/tui_gateway/test_mcp_catalog_rpc_transport.py",
-    "tests/hermes_cli/test_proxy_subscription_usage.py"
+    "tests/hermes_cli/test_proxy_subscription_usage.py",
+    "tests/hermes_cli/test_user_providers_model_switch.py"
   ]
 }
