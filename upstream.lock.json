@@ -56,7 +56,7 @@
     },
     {
       "path": "patches/0006-proxy-subscription-usage.patch",
-      "sha256": "051843520a5f503627cf313a02d79d92bd23c2a105770afae8ca59fb5298dd95",
+      "sha256": "ce440634abecc529329c610215f9950c4e3f9f795044c29201090464ac392347",
       "description": "Read-only subscription telemetry for custom proxy providers",
       "native_tests": [
         "tests/hermes_cli/test_proxy_subscription_usage.py"

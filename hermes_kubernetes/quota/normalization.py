@@ -45,7 +45,7 @@ def normalize(provider, payload):
                     (
                         str(extra.get("limit_name") or "Model") + " · ",
                         extra.get("rate_limit"),
-                        "models",
+                        "model",
                     )
                 )
         for prefix, group, scope in groups:
@@ -77,7 +77,7 @@ def normalize(provider, payload):
                         label,
                         item.get("utilization"),
                         item.get("resets_at"),
-                        "models" if key in {"seven_day_opus", "seven_day_sonnet"} else "account",
+                        "model" if key in {"seven_day_opus", "seven_day_sonnet"} else "account",
                     )
                 )
     elif provider == "gemini":
@@ -91,6 +91,6 @@ def normalize(provider, payload):
                 str(item.get("modelId") or "Gemini") + " · " + str(item.get("tokenType") or "Quota")
             )
             windows.append(
-                window(label, round((1 - fraction) * 100, 8), item.get("resetTime"), "models")
+                window(label, round((1 - fraction) * 100, 8), item.get("resetTime"), "model")
             )
     return [item for item in windows if item is not None]

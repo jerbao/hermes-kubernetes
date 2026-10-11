@@ -39,7 +39,7 @@ class UsageTests(unittest.TestCase):
             "claude", {"five_hour": {"utilization": 0.5}, "seven_day_opus": {"utilization": 100}}
         )
         self.assertEqual(result[0]["used_percent"], 0.5)
-        self.assertEqual(result[1]["scope"], "models")
+        self.assertEqual(result[1]["scope"], "model")
         result = normalize(
             "gemini",
             {

@@ -30,10 +30,10 @@ index 2175b781..1696e8cd 100644
  # A window this spent counts as exhausted when computing an account's recovery time.
 diff --git a/tests/hermes_cli/test_proxy_subscription_usage.py b/tests/hermes_cli/test_proxy_subscription_usage.py
 new file mode 100644
-index 00000000..5ff6a975
+index 00000000..a7969bf1
 --- /dev/null
 +++ b/tests/hermes_cli/test_proxy_subscription_usage.py
-@@ -0,0 +1,16 @@
+@@ -0,0 +1,43 @@
 +"""The distribution hook augments custom rows without replacing native telemetry."""
 +import sys
 +import types
@@ -50,3 +50,30 @@ index 00000000..5ff6a975
 +         patch("hermes_cli.auth.read_credential_pool", return_value={}):
 +        _apply_usage(rows)
 +    assert rows[0]["usage"] == {"accounts": []}
++
++
++def test_normalized_quotas_match_native_wire_contract():
++    from pathlib import Path
++    from tui_gateway.contracts.config_free_tier_control import ProviderUsage
++
++    distribution = Path(__file__).resolve().parents[3]
++    with patch.object(sys, "path", [str(distribution), *sys.path]):
++        from hermes_kubernetes.quota.normalization import normalize
++        from hermes_kubernetes.quota.inventory import usage_for
++        from datetime import datetime, timezone
++
++        fixtures = {
++            "codex": {"rate_limit": {"primary_window": {"used_percent": 50}},
++                      "additional_rate_limits": [{"limit_name": "Model", "rate_limit": {
++                          "primary_window": {"used_percent": 25}}}]},
++            "claude": {"seven_day_opus": {"utilization": 10}},
++            "gemini": {"buckets": [{"modelId": "flash", "remainingFraction": 0.7}]},
++        }
++        for family, payload in fixtures.items():
++            windows = normalize(family, payload)
++            assert windows
++            value = {"fetched_at": datetime.now(timezone.utc).isoformat(), "providers": {
++                family: {"accounts": [{"id": "a", "label": "Account", "state": "ready",
++                                       "resets_at": None, "windows": windows}]}}}
++            parsed = ProviderUsage.model_validate(usage_for(value, family))
++            assert parsed.accounts[0].windows
