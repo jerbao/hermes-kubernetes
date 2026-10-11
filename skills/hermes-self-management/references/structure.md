@@ -62,6 +62,16 @@ In `state`, `config.yaml` belongs to default; other profiles use
 Never share `.env` through symlinks. Explicitly select
 `hermes --profile PROFILE ...` inside `python3 hermes.py runtime exec`.
 
+Native profile CRUD and descriptions are available through
+`python3 hermes.py runtime exec -- hermes profile ...`; use `profile --help`
+and command-specific help before destructive changes. The Git mirror stores the
+complete native profile metadata mapping in
+`customizations/PROFILE/profile.json`. It maps to the default profile's root
+`profile.yaml` or `profiles/PROFILE/profile.yaml` in the active HERMES_HOME.
+Unknown keys are retained for plugin-owned metadata; JSON-compatible values are
+supported. Secrets are sanitized into private PVC references. Do not share
+profile `.env` files or remove a profile through this metadata file.
+
 SQLite/WAL/SHM cannot be transferred or overwritten as ordinary files. Use
 `sqlite-backup` for live databases. GUI directory browsing uses terminal SSH;
 these folders do not show where backend plugins were installed. Host, user,
@@ -92,10 +102,16 @@ provider-managed. Routing details are in the shared capabilities documentation.
 ## Git, updates and backups
 
 The controller reconciles Git, native state and baselines, preserving conflicts.
-It projects sanitized skills, plugin source, persona, configuration references,
-provenance and PM/MCP locks to `customizations/<profile>/`. On `main`, admitted
+It projects sanitized profile metadata, skills, plugin source, persona,
+configuration references, provenance and PM/MCP locks to `customizations/<profile>/`. On `main`, admitted
 changes publish after 120 stable seconds. Branches, conflicts and distribution
 changes require explicit review. Editing a projection does not prove application.
+
+The terminal's user-level `hermes-workspace-sync.timer` runs every minute.
+Use `python3 hermes.py sync-status` to confirm the user timer is enabled/active,
+see the latest result and determine whether synchronization is still running.
+Use `python3 hermes.py sync --publish` for an explicit run. A nonzero result or
+reported conflict means the live and Git copies need review; it is not success.
 
 Customizations do not require image builds. Shared/core changes pass public CI,
 release publication, private update PR, digest adoption and ArgoCD. Releases are

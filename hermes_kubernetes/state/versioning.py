@@ -10,6 +10,7 @@ if __name__ == "__main__" and "__file__" in globals():
 import base64
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -108,10 +109,54 @@ SOURCE_SUFFIXES = {
     ".example",
 }
 MAX_FILE = 8 * 1024 * 1024
+MAX_METADATA_DEPTH = 64
+MAX_METADATA_NODES = 100_000
 
 
 def dump(value):
     return (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode()
+
+
+def profile_metadata_value(value):
+    """Validate the JSON-compatible mapping used for profile.yaml projections."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("profile.yaml must contain a mapping")
+
+    active = set()
+    count = 0
+
+    def validate(item, depth=0):
+        nonlocal count
+        count += 1
+        if count > MAX_METADATA_NODES or depth > MAX_METADATA_DEPTH:
+            raise ValueError("profile.yaml metadata is too complex")
+        if isinstance(item, dict):
+            if any(not isinstance(key, str) for key in item):
+                raise ValueError("profile.yaml mapping keys must be strings")
+            if id(item) in active:
+                raise ValueError("profile.yaml metadata cannot contain recursive aliases")
+            active.add(id(item))
+            try:
+                return {key: validate(child, depth + 1) for key, child in item.items()}
+            finally:
+                active.remove(id(item))
+        if isinstance(item, list):
+            if id(item) in active:
+                raise ValueError("profile.yaml metadata cannot contain recursive aliases")
+            active.add(id(item))
+            try:
+                return [validate(child, depth + 1) for child in item]
+            finally:
+                active.remove(id(item))
+        if item is None or isinstance(item, (str, bool, int)):
+            return item
+        if isinstance(item, float) and math.isfinite(item):
+            return item
+        raise ValueError("profile.yaml values must be JSON-compatible")
+
+    return validate(value)
 
 
 def digest(data):
@@ -252,6 +297,13 @@ def sensitive(value, key="", previous=""):
 
 
 def sanitize(value, location, vault, secrets, key="", previous=""):
+    if (
+        isinstance(value, dict)
+        and set(value) == {"$hermes_secret"}
+        and isinstance(value["$hermes_secret"], str)
+        and re.fullmatch(r"[a-f0-9]{64}", value["$hermes_secret"])
+    ):
+        return value
     if (
         sensitive(value, key, previous)
         or isinstance(value, str)
@@ -602,6 +654,25 @@ def capture(home, source=Path("/opt/hermes"), known=None, bundle=Path("/opt/herm
         prefix = f"customizations/{profile}/"
         if not (root / "config.yaml").is_file():
             continue
+        metadata_path = root / "profile.yaml"
+        if metadata_path.is_symlink():
+            raise ValueError("profile.yaml cannot be a symlink: " + profile)
+        if metadata_path.is_file():
+            try:
+                if metadata_path.stat().st_size > MAX_FILE:
+                    raise ValueError("profile.yaml metadata exceeds the size limit")
+                metadata = profile_metadata_value(
+                    yaml_module().safe_load(metadata_path.read_text())
+                )
+                safe_metadata = sanitize(metadata, profile + "/profile-metadata", vault, secrets)
+                add(prefix + "profile.json", dump(safe_metadata))
+                secrets.update(
+                    value.encode()
+                    for value in vault.values()
+                    if isinstance(value, str) and len(value) >= 8
+                )
+            except Exception as error:
+                raise ValueError("Invalid profile metadata for " + profile) from error
         configuration = (
             yaml_module().safe_load((root / "config.yaml").read_text())
             if (root / "config.yaml").is_file()
@@ -726,6 +797,8 @@ def target(home, name):
     else:
         root = roots[profile]
     relative = Path(*parts[2:])
+    if relative.as_posix() == "profile.json":
+        return root / "profile.yaml", "profile"
     if (
         len(relative.parts) == 2
         and relative.parts[0] == "persona"
@@ -763,6 +836,17 @@ def apply(home, changes, source=Path("/opt/hermes"), bundle=Path("/opt/hermes-pe
     secrets = environment_secrets(home)
     prepared = []
     aliases = []
+    available_profiles = profiles(home)
+    for name, change in changes.items():
+        parts = PurePosixPath(name).parts
+        if len(parts) == 3 and parts[0] == "customizations" and parts[2] == "profile.json":
+            profile = parts[1]
+            if profile not in available_profiles:
+                config_name = f"customizations/{profile}/config.json"
+                if config_name not in changes or changes[config_name].get("data") is None:
+                    raise ValueError(
+                        "Profile metadata requires an existing or newly-created profile"
+                    )
     for name, change in changes.items():
         actual = current.get(name, {}).get("sha256")
         if actual != change.get("expected"):
@@ -803,8 +887,16 @@ def apply(home, changes, source=Path("/opt/hermes"), bundle=Path("/opt/hermes-pe
                 check_content(data, secrets)
             if kind == "source" and not managed_restore:
                 data = resolve_source(data, vault)
-            if kind in {"config", "features", "installations", "mcp", "python"}:
-                value = resolve(json.loads(data), vault)
+            if kind in {"config", "features", "installations", "mcp", "python", "profile"}:
+                value = json.loads(data)
+                if kind == "profile":
+                    value = profile_metadata_value(value)
+                    redacted = sanitize(value, parts[1] + "/profile-metadata", {}, secrets)
+                    if redacted != value:
+                        raise ValueError(
+                            "Sensitive profile metadata must stay private or use a stored secret reference"
+                        )
+                value = resolve(value, vault)
                 if kind == "config":
                     if not isinstance(value, dict):
                         raise ValueError("Configuration must be an object")
@@ -814,11 +906,16 @@ def apply(home, changes, source=Path("/opt/hermes"), bundle=Path("/opt/hermes-pe
                 elif kind == "installations":
                     aliases.append((path.parent.parent, value.get("links", {})))
                     data = dump(value["plugins"])
+                elif kind == "profile":
+                    value = profile_metadata_value(value)
+                    data = (
+                        yaml_module().safe_dump(value, allow_unicode=True, sort_keys=False).encode()
+                    )
                 else:
                     data = dump(value)
         if any(p.is_symlink() for p in [path, *path.parents]):
             raise ValueError("Managed path is a symlink")
-        if data is None and kind != "source":
+        if data is None and kind not in {"source", "profile"}:
             raise ValueError("Remove profiles/installations through their native managers")
         prepared.append(
             (

@@ -314,6 +314,139 @@ class VersioningTests(unittest.TestCase):
             self.assertEqual(skill.read_text(), "Git concurrent")
             self.assertEqual((home / "skills/own/SKILL.md").read_text(), "GUI concurrent")
 
+    def test_profile_metadata_round_trips_unknown_fields_and_keeps_secrets_private(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary).resolve()
+            root = directory / "project"
+            root.mkdir()
+            home = self.home(directory / "native")
+            metadata = {
+                "description": "A profile description",
+                "display_name": "A display name",
+                "ui_meta": {"hermes-bots": {"title": "Preserved title"}},
+                "sysone": {
+                    "does": ["review", "report"],
+                    "when": {"include": ["pull requests"], "exclude": []},
+                    "future": {"opaque": True},
+                    "private_token": "METADATA_ONLY_PRIVATE_TOKEN",
+                },
+            }
+            import yaml
+
+            with (home / "config.yaml").open("a") as config:
+                config.write("metadata_echo: METADATA_ONLY_PRIVATE_TOKEN\n")
+            (home / "profile.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False))
+            runtime = workspace.LocalRuntime(home, directory / "source")
+            self.assertEqual(workspace.reconcile(root, runtime)["status"], "synchronized")
+
+            projection = root / "customizations/default/profile.json"
+            projected = json.loads(projection.read_text())
+            self.assertEqual(projected["sysone"]["does"], ["review", "report"])
+            self.assertEqual(projected["sysone"]["future"], {"opaque": True})
+            self.assertNotIn("PRIVATE_CREDENTIAL_EXAMPLE", projection.read_text())
+            self.assertNotIn("METADATA_ONLY_PRIVATE_TOKEN", projection.read_text())
+            self.assertNotIn(
+                "METADATA_ONLY_PRIVATE_TOKEN",
+                (root / "customizations/default/config.json").read_text(),
+            )
+            self.assertIn(
+                "METADATA_ONLY_PRIVATE_TOKEN",
+                (home / "state/versioning/secrets.json").read_text(),
+            )
+            self.assertIn("$hermes_secret", projected["sysone"]["private_token"])
+
+            projected["sysone"]["when"] = {"include": ["issues"], "exclude": ["drafts"]}
+            projection.write_bytes(native.dump(projected))
+            self.assertEqual(workspace.reconcile(root, runtime)["to_runtime"], 1)
+            active = yaml.safe_load((home / "profile.yaml").read_text())
+            self.assertEqual(active["sysone"]["when"]["include"], ["issues"])
+            self.assertEqual(active["sysone"]["does"], ["review", "report"])
+            self.assertEqual(active["ui_meta"], metadata["ui_meta"])
+            self.assertEqual(active["sysone"]["private_token"], "METADATA_ONLY_PRIVATE_TOKEN")
+
+            active["new_upstream_field"] = {"kept": "from runtime"}
+            (home / "profile.yaml").write_text(yaml.safe_dump(active, sort_keys=False))
+            self.assertEqual(workspace.reconcile(root, runtime)["from_runtime"], 1)
+            self.assertEqual(
+                json.loads(projection.read_text())["new_upstream_field"],
+                {"kept": "from runtime"},
+            )
+
+            projection.unlink()
+            self.assertEqual(workspace.reconcile(root, runtime)["to_runtime"], 1)
+            self.assertFalse((home / "profile.yaml").exists())
+            self.assertIn("default", native.profiles(home))
+            self.assertTrue((home / "config.yaml").is_file())
+
+    def test_concurrent_profile_metadata_edits_conflict_without_overwrite(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary).resolve()
+            root = directory / "project"
+            root.mkdir()
+            home = self.home(directory / "native")
+            import yaml
+
+            (home / "profile.yaml").write_text("description: initial\nsysone:\n  when: initial\n")
+            runtime = workspace.LocalRuntime(home, directory / "source")
+            workspace.reconcile(root, runtime)
+            projection = root / "customizations/default/profile.json"
+            local = json.loads(projection.read_text())
+            local["sysone"]["when"] = "from workspace"
+            projection.write_bytes(native.dump(local))
+            active = yaml.safe_load((home / "profile.yaml").read_text())
+            active["sysone"]["when"] = "from runtime"
+            (home / "profile.yaml").write_text(yaml.safe_dump(active, sort_keys=False))
+
+            result = workspace.reconcile(root, runtime)
+            self.assertEqual(result["status"], "conflict")
+            self.assertEqual(json.loads(projection.read_text())["sysone"]["when"], "from workspace")
+            self.assertEqual(
+                yaml.safe_load((home / "profile.yaml").read_text())["sysone"]["when"],
+                "from runtime",
+            )
+
+    def test_profile_metadata_cannot_create_an_orphan_profile(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = self.home(Path(temporary).resolve() / "native")
+            metadata = native.dump({"sysone": {"does": ["inspect"]}})
+            with self.assertRaisesRegex(ValueError, "existing or newly-created profile"):
+                native.apply(
+                    home,
+                    {
+                        "customizations/ghost/profile.json": {
+                            "expected": None,
+                            "data": base64.b64encode(metadata).decode(),
+                        }
+                    },
+                )
+
+    def test_profile_metadata_rejects_raw_sensitive_fields_from_git(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = self.home(Path(temporary).resolve() / "native")
+            metadata = native.dump({"sysone": {"client_token": "not-for-git"}})
+            with self.assertRaisesRegex(ValueError, "Sensitive profile metadata"):
+                native.apply(
+                    home,
+                    {
+                        "customizations/default/profile.json": {
+                            "expected": None,
+                            "data": base64.b64encode(metadata).decode(),
+                        }
+                    },
+                )
+            self.assertFalse((home / "profile.yaml").exists())
+
+    def test_profile_metadata_rejects_non_mappings_and_recursive_yaml_aliases(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = self.home(Path(temporary).resolve() / "native")
+            metadata = home / "profile.yaml"
+            metadata.write_text("- not-a-mapping\n")
+            with self.assertRaisesRegex(ValueError, "Invalid profile metadata"):
+                native.capture(home)
+            metadata.write_text("recursive: &node [*node]\n")
+            with self.assertRaisesRegex(ValueError, "Invalid profile metadata"):
+                native.capture(home)
+
     def test_configuration_round_trip_keeps_private_values_and_cas_rejects_stale_changes(
         self,
     ):
@@ -353,11 +486,19 @@ class VersioningTests(unittest.TestCase):
             new = root / "customizations/second/config.json"
             new.parent.mkdir()
             new.write_text('{"model":{"default":"second"}}')
+            new_metadata = root / "customizations/second/profile.json"
+            new_metadata.write_text('{"sysone":{"does":["new profile"]}}')
             workspace.reconcile(
                 root, workspace.LocalRuntime(restored, Path(t).resolve() / "source")
             )
             self.assertTrue((restored / "profiles/second/.env").is_file())
             self.assertFalse((restored / "profiles/second/.env").is_symlink())
+            self.assertEqual(
+                native.yaml_module().safe_load(
+                    (restored / "profiles/second/profile.yaml").read_text()
+                )["sysone"]["does"],
+                ["new profile"],
+            )
             self.assertNotEqual(
                 (restored / ".env").stat().st_ino,
                 (restored / "profiles/second/.env").stat().st_ino,
