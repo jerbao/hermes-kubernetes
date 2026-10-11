@@ -1,0 +1,52 @@
+diff --git a/hermes_cli/config.py b/hermes_cli/config.py
+index f4373503..85575482 100644
+--- a/hermes_cli/config.py
++++ b/hermes_cli/config.py
+@@ -948,6 +948,7 @@ def get_missing_skill_config_vars() -> List[Dict[str, Any]]:
+ # defaults are accepted automatically. These optional/legacy roots are valid on disk but
+ # intentionally absent from DEFAULT_CONFIG (omitted when unused / alternate schema forms).
+ _EXTRA_KNOWN_ROOT_KEYS = {
++    "proxy_usage",       # distribution-owned, opt-in remote subscription telemetry
+     "custom_providers",  # legacy list form; modern equivalent is providers: {}
+     "fallback_model",    # optional single dict or chain list; omitted when disabled
+     "mcp_servers",       # MCP server definitions written by setup/tools flows
+diff --git a/hermes_cli/inventory.py b/hermes_cli/inventory.py
+index 2175b781..1696e8cd 100644
+--- a/hermes_cli/inventory.py
++++ b/hermes_cli/inventory.py
+@@ -352,6 +352,13 @@ def _apply_usage(rows: list[dict]) -> None:
+             row["usage"] = {"accounts": accounts}
+     refresh_account_usage_async(wanted)
+     refresh_account_usage_entries_async(entry_requests)
++    # The distribution owns opt-in telemetry for remote custom providers.
++    try:
++        from hermes_kubernetes.quota.inventory import apply_usage
++    except ImportError:
++        pass  # Standalone upstream checkouts have no distribution service.
++    else:
++        apply_usage(rows)
+ 
+ 
+ # A window this spent counts as exhausted when computing an account's recovery time.
+diff --git a/tests/hermes_cli/test_proxy_subscription_usage.py b/tests/hermes_cli/test_proxy_subscription_usage.py
+new file mode 100644
+index 00000000..5ff6a975
+--- /dev/null
++++ b/tests/hermes_cli/test_proxy_subscription_usage.py
+@@ -0,0 +1,16 @@
++"""The distribution hook augments custom rows without replacing native telemetry."""
++import sys
++import types
++from unittest.mock import patch
++
++
++def test_custom_provider_usage_hook():
++    from hermes_cli.inventory import _apply_usage
++
++    rows = [{"slug": "proxy-codex", "is_user_defined": True}]
++    module = types.ModuleType("hermes_kubernetes.quota.inventory")
++    module.apply_usage = lambda values: values[0].update(usage={"accounts": []})
++    with patch.dict(sys.modules, {module.__name__: module}), \
++         patch("hermes_cli.auth.read_credential_pool", return_value={}):
++        _apply_usage(rows)
++    assert rows[0]["usage"] == {"accounts": []}

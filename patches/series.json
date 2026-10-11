@@ -73,6 +73,18 @@
         "skills/autonomous-ai-agents/hermes-agent/references/desktop-plugins.md"
       ],
       "native_tests": []
+    },
+    {
+      "path": "patches/0006-proxy-subscription-usage.patch",
+      "description": "Read-only subscription telemetry for custom proxy providers",
+      "files": [
+        "hermes_cli/inventory.py",
+        "tests/hermes_cli/test_proxy_subscription_usage.py",
+        "hermes_cli/config.py"
+      ],
+      "native_tests": [
+        "tests/hermes_cli/test_proxy_subscription_usage.py"
+      ]
     }
   ]
 }

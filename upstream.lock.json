@@ -13,13 +13,13 @@
     {
       "path": "patches/0001-runtime-almalinux.patch",
       "sha256": "270f306be99cf7ea5a5ddf0c32f9b209434241576958820f348bd1107b591f81",
-      "description": "Imagem AlmaLinux x86-64-v2 e depend\u00eancias do runtime",
+      "description": "AlmaLinux x86-64-v2 image and runtime dependencies",
       "native_tests": []
     },
     {
       "path": "patches/0002-ssh-terminal.patch",
       "sha256": "0075659b66497e66d316e602ef9ccd244e8a8aa4f1269dedaccb969494d98e7e",
-      "description": "Transporte SSH, sincroniza\u00e7\u00e3o de arquivos e isolamento por perfil",
+      "description": "SSH transport, file synchronization and profile isolation",
       "native_tests": [
         "tests/tools/test_ssh_command_batches.py",
         "tests/tools/test_ssh_bulk_upload.py",
@@ -32,7 +32,7 @@
     {
       "path": "patches/0003-anthropic-usage.patch",
       "sha256": "067cd61f3d1b32e172958a6387caff3ab0c039045bda30c33d7e30fe7e6ba7e6",
-      "description": "Contabiliza\u00e7\u00e3o nativa de tokens e cache Anthropic no adaptador auxiliar",
+      "description": "Native Anthropic token and cache accounting in the auxiliary adapter",
       "native_tests": [
         "tests/agent/test_anthropic_auxiliary_usage.py",
         "tests/agent/test_auxiliary_client_anthropic_custom.py",
@@ -42,7 +42,7 @@
     {
       "path": "patches/0004-mcp-stdio-executor.patch",
       "sha256": "df62dab71415ab792047b810491193c82301a4189c64adbecf7953e254fa0f91",
-      "description": "Executor stdio externo e transporte do cat\u00e1logo MCP na API da interface",
+      "description": "External stdio executor and MCP catalog transport in the interface API",
       "native_tests": [
         "tests/tools/test_mcp_stdio_executor.py",
         "tests/tui_gateway/test_mcp_catalog_rpc_transport.py"
@@ -51,8 +51,16 @@
     {
       "path": "patches/0005-managed-skills.patch",
       "sha256": "1092909c5ef6f9bbb1ded21d743a6abaaf6e3195151885cea04498b0ddfabd46",
-      "description": "Skills oficiais adaptadas ao runtime separado e \u00e0 autoger\u00eancia via ponte",
+      "description": "Official skills adapted to the separate runtime and self-management bridge",
       "native_tests": []
+    },
+    {
+      "path": "patches/0006-proxy-subscription-usage.patch",
+      "sha256": "051843520a5f503627cf313a02d79d92bd23c2a105770afae8ca59fb5298dd95",
+      "description": "Read-only subscription telemetry for custom proxy providers",
+      "native_tests": [
+        "tests/hermes_cli/test_proxy_subscription_usage.py"
+      ]
     }
   ],
   "native_tests": [
@@ -66,6 +74,7 @@
     "tests/agent/test_auxiliary_client_anthropic_custom.py",
     "tests/agent/test_moa_slot_api_mode.py",
     "tests/tools/test_mcp_stdio_executor.py",
-    "tests/tui_gateway/test_mcp_catalog_rpc_transport.py"
+    "tests/tui_gateway/test_mcp_catalog_rpc_transport.py",
+    "tests/hermes_cli/test_proxy_subscription_usage.py"
   ]
 }

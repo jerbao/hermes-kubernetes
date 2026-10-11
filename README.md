@@ -255,3 +255,6 @@ are not committed. [Directory guide](docs/structure.md).
 - [Repository directories and versioned files](docs/structure.md)
 
 Upstream licenses and attribution: [LICENSE](LICENSE), [NOTICE](NOTICE).
+
+Subscription limits for custom CLIProxy-backed providers are available through the
+optional [read-only quota adapter](docs/proxy-quotas.md).
