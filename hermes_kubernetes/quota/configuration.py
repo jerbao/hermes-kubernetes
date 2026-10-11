@@ -2,19 +2,23 @@
 
 import argparse
 from pathlib import Path
+from io import StringIO
 
 
 def prepare(source, key_file, destination):
-    import yaml
+    from ruamel.yaml import YAML
 
-    value = yaml.safe_load(source.read_text())
+    yaml = YAML(typ="safe")
+    value = yaml.load(source.read_text())
     key = key_file.read_text().strip()
     if len(key) < 32:
         raise ValueError("Management key must contain at least 32 characters")
     management = value.setdefault("management", {})
     management.update({"secret-key": key, "allow-remote": False, "disable-control-panel": True})
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(yaml.safe_dump(value, sort_keys=False))
+    stream = StringIO()
+    yaml.dump(value, stream)
+    destination.write_text(stream.getvalue())
     destination.chmod(0o600)
 
 
