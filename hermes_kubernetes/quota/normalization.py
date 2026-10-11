@@ -80,6 +80,27 @@ def normalize(provider, payload):
                         "model" if key in {"seven_day_opus", "seven_day_sonnet"} else "account",
                     )
                 )
+    elif provider == "antigravity":
+        for group in payload.get("groups") or []:
+            if not isinstance(group, dict):
+                continue
+            group_label = str(group.get("displayName") or group.get("display_name") or "Google")
+            for item in group.get("buckets") or []:
+                if not isinstance(item, dict):
+                    continue
+                fraction = item.get("remainingFraction", item.get("remaining_fraction"))
+                if not number(fraction) or not 0 <= fraction <= 1:
+                    continue
+                label = {"weekly": "7 days", "5h": "5 hours"}.get(item.get("window"))
+                label = label or str(item.get("displayName") or item.get("display_name") or "Quota")
+                windows.append(
+                    window(
+                        group_label + " · " + label,
+                        round((1 - fraction) * 100, 8),
+                        item.get("resetTime", item.get("reset_time")),
+                        "model",
+                    )
+                )
     elif provider == "gemini":
         for item in payload.get("buckets") or []:
             if not isinstance(item, dict):

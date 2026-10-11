@@ -8,7 +8,13 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 
 from hermes_kubernetes.quota.normalization import normalize
 
-FAMILIES = {"codex": "codex", "claude": "claude", "gemini": "gemini", "gemini-cli": "gemini"}
+FAMILIES = {
+    "codex": "codex",
+    "claude": "claude",
+    "gemini": "gemini",
+    "gemini-cli": "gemini",
+    "antigravity": "gemini",
+}
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -62,6 +68,14 @@ class ProxyClient:
                 raise ValueError("Gemini project unavailable")
             data = json.dumps({"project": project})
             headers["Content-Type"] = "application/json"
+            if (account.get("provider") or account.get("type")) == "antigravity":
+                url = (
+                    "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+                )
+                headers["User-Agent"] = (
+                    "antigravity/cli/1.0.13 (aidev_client; os_type=linux; arch=amd64)"
+                )
+                family = "antigravity"
         body = {
             "auth_index": account["auth_index"],
             "method": method,

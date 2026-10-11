@@ -3,7 +3,8 @@
 The optional quota adapter displays upstream subscription usage in the native
 Hermes model picker. OpenAI/Codex reports its actual time windows, Claude reports
 session and weekly windows (including model-specific windows), and Gemini CLI
-reports model quota buckets and reset times. It does not infer plan limits or
+reports model quota buckets and reset times. Google accounts authenticated through
+Antigravity use its quota summary for both weekly and five-hour group windows. It does not infer plan limits or
 substitute the proxy's local request/token counters for subscription quotas.
 API-key accounts without a compatible subscription endpoint remain unavailable.
 
@@ -58,6 +59,11 @@ or empty responses never become a misleading zero. Reset times and window labels
 come from provider data. Telemetry never changes model routing or benches accounts.
 Gemini's reported buckets may omit other enforced limits; a displayed remaining
 quota does not guarantee that a generation request will be accepted.
+
+Antigravity credentials are grouped under the configured `gemini` route, while
+using `retrieveUserQuotaSummary` and the credential's own project internally.
+The adapter does not derive weekly usage from `fetchAvailableModels`, which only
+reports model quotas. This follows the [official management client's quota request](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/blob/main/src/utils/quota/constants.ts).
 
 ## Verification
 

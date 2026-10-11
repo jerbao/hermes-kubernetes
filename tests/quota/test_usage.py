@@ -51,6 +51,49 @@ class UsageTests(unittest.TestCase):
         )
         self.assertEqual([w["used_percent"] for w in result], [0, 100])
 
+    def test_antigravity_summary_uses_weekly_and_five_hour_buckets(self):
+        payload = {
+            "groups": [
+                {
+                    "displayName": "Gemini Models",
+                    "buckets": [
+                        {
+                            "window": "weekly",
+                            "remainingFraction": 0.8,
+                            "resetTime": "2026-10-18T12:00:00Z",
+                        },
+                        {"window": "5h", "remainingFraction": 0.9},
+                        {"window": "5h", "remainingFraction": None},
+                    ],
+                }
+            ]
+        }
+        calls = []
+
+        def request(url, *, token, data):
+            calls.append(data)
+            self.assertEqual(
+                data["url"],
+                "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+            )
+            self.assertEqual(json.loads(data["data"]), {"project": "project"})
+            self.assertEqual(data["header"]["Authorization"], "Bearer $TOKEN$")
+            self.assertIn("antigravity/cli/", data["header"]["User-Agent"])
+            return {"status_code": 200, "body": json.dumps(payload)}
+
+        result = ProxyClient("http://127.0.0.1:8317", "secret", request).account(
+            {"provider": "antigravity", "auth_index": "google", "project_id": "project"}
+        )
+        self.assertEqual(result[0], "gemini")
+        self.assertEqual(result[1]["state"], "ready")
+        windows = result[1]["windows"]
+        self.assertEqual([w["used_percent"] for w in windows], [20, 10])
+        self.assertEqual(
+            [w["label"] for w in windows], ["Gemini Models · 7 days", "Gemini Models · 5 hours"]
+        )
+        self.assertTrue(all(w["scope"] == "model" for w in windows))
+        self.assertTrue(windows[0]["resets_at"].endswith("+00:00"))
+
     def test_unknown_values_are_not_zero(self):
         self.assertEqual(normalize("codex", {"rate_limit": {"primary_window": {}}}), [])
         self.assertEqual(normalize("claude", {"five_hour": {"utilization": True}}), [])
