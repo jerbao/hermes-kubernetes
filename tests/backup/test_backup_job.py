@@ -9,12 +9,49 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import hermes_kubernetes.backup.job as backup_job
 
 
 class BackupJobTests(unittest.TestCase):
+    def test_existing_archive_name_is_preserved_and_publish_retries_with_new_uuid(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary).resolve()
+            source, destination = base / "workspace", base / "backups"
+            source.mkdir()
+            (source / "SOUL.md").write_text("preserve this file")
+            fixed = datetime(2026, 10, 12, 9, 30, tzinfo=timezone.utc)
+            collision = "012345abcdef"
+            replacement = "fedcba987654"
+            existing_name = f"hermes-workspace-20261012T093000Z-{collision}.tar.gz"
+            existing = destination / existing_name
+            destination.mkdir()
+            existing.write_bytes(b"previous verified archive")
+
+            with (
+                patch.object(backup_job, "datetime") as clock,
+                patch.object(
+                    backup_job.uuid,
+                    "uuid4",
+                    side_effect=[
+                        SimpleNamespace(hex=collision + "0" * 20),
+                        SimpleNamespace(hex=replacement + "0" * 20),
+                    ],
+                ),
+            ):
+                clock.now.return_value = fixed
+                status = backup_job.backup(source, destination, kind="workspace")
+
+            self.assertEqual(
+                status["archive"],
+                f"hermes-workspace-20261012T093000Z-{replacement}.tar.gz",
+            )
+            self.assertEqual(existing.read_bytes(), b"previous verified archive")
+            self.assertTrue((destination / status["archive"]).is_file())
+            self.assertFalse(list(destination.glob(".receiving-*")))
+
     def test_retention_keeps_the_newest_backup_when_uuid_names_share_a_second(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

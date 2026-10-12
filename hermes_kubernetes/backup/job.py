@@ -26,6 +26,7 @@ from hermes_kubernetes.backup.errors import SnapshotRetryError
 # One retry bounds extra I/O while allowing brief workspace/WAL churn to settle.
 SNAPSHOT_ATTEMPTS = 2
 SNAPSHOT_RETRY_DELAY_SECONDS = 1
+ARCHIVE_NAME_ATTEMPTS = 4
 
 
 def backup(source, directory, keep=6, *, kind="state", policy=None, workspace_lock=None):
@@ -81,7 +82,16 @@ def backup(source, directory, keep=6, *, kind="state", policy=None, workspace_lo
                 "size": archive.stat().st_size,
                 **verification,
             }
-            os.link(archive, directory / name)
+            publish_name = name
+            for attempt in range(ARCHIVE_NAME_ATTEMPTS):
+                try:
+                    os.link(archive, directory / publish_name)
+                    break
+                except FileExistsError:
+                    if attempt + 1 == ARCHIVE_NAME_ATTEMPTS:
+                        raise
+                    publish_name = f"hermes-{kind}-{stamp}-{uuid.uuid4().hex[:12]}.tar.gz"
+            status["archive"] = publish_name
         with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as handle:
             json.dump(status, handle)
             handle.flush()
