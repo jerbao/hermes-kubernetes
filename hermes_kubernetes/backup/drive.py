@@ -37,6 +37,22 @@ class RemoteError(RuntimeError):
         self.command, self.returncode, self.diagnostic = command, returncode, diagnostic
 
 
+_SAFE_FAILURE_CODES = {
+    "Workspace changed during snapshot; retry": "workspace_file_changed_during_snapshot",
+    "Workspace paths changed during snapshot; retry": "workspace_paths_changed_during_snapshot",
+    "SQLite recovery data changed during snapshot; retry": "workspace_sqlite_recovery_changed_during_snapshot",
+    "Workspace reconstruction conditions changed during snapshot; retry": "workspace_policy_changed_during_snapshot",
+    "SQLite snapshot timed out": "workspace_sqlite_snapshot_timed_out",
+}
+
+
+def safe_failure_reason(error):
+    """Return a bounded diagnostic code without exposing arbitrary exception text."""
+    if isinstance(error, RemoteError):
+        return f"rclone_{error.command}_exit_{error.returncode}"
+    return _SAFE_FAILURE_CODES.get(str(error), type(error).__name__)
+
+
 class Remote:
     """Give rclone a writable private config so refreshing OAuth works in pods."""
 
@@ -402,5 +418,4 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as error:
-        detail = str(error) if isinstance(error, RemoteError) else type(error).__name__
-        raise SystemExit("Encrypted backup failed: " + detail)
+        raise SystemExit("Encrypted backup failed: " + safe_failure_reason(error))
