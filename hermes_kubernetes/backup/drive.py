@@ -44,6 +44,10 @@ _SAFE_FAILURE_CODES = {
     "Workspace reconstruction conditions changed during snapshot; retry": "workspace_policy_changed_during_snapshot",
     "Personal file changed during snapshot; retry": "state_file_changed_during_snapshot",
     "SQLite snapshot timed out": "sqlite_snapshot_timed_out",
+    "Snapshot output already exists": "snapshot_output_already_exists",
+    "Never overwrite an existing remote snapshot": "remote_snapshot_already_exists",
+    "Local backup path already exists": "local_backup_path_already_exists",
+    "Remote backup path already exists": "remote_backup_path_already_exists",
 }
 
 
@@ -51,6 +55,8 @@ def safe_failure_reason(error):
     """Return a bounded diagnostic code without exposing arbitrary exception text."""
     if isinstance(error, RemoteError):
         return f"rclone_{error.command}_exit_{error.returncode}"
+    if isinstance(error, FileExistsError):
+        return _SAFE_FAILURE_CODES.get(str(error), "backup_path_already_exists")
     return _SAFE_FAILURE_CODES.get(str(error), type(error).__name__)
 
 
@@ -374,22 +380,28 @@ def main():
             from hermes_kubernetes.backup.job import backup
 
             policy = json.loads(args.policy.read_text()) if args.policy else None
-            status = backup(
-                args.source,
-                args.directory,
-                args.keep,
-                kind=args.kind,
-                policy=policy,
-                workspace_lock=args.workspace_lock
-                or (
-                    os.environ.get("HERMES_WORKSPACE_LOCK") or None
-                    if args.kind == "workspace"
-                    else None
-                ),
-            )
-            result = remote.upload(
-                args.directory / status["archive"], args.collection, keep=args.keep
-            )
+            try:
+                status = backup(
+                    args.source,
+                    args.directory,
+                    args.keep,
+                    kind=args.kind,
+                    policy=policy,
+                    workspace_lock=args.workspace_lock
+                    or (
+                        os.environ.get("HERMES_WORKSPACE_LOCK") or None
+                        if args.kind == "workspace"
+                        else None
+                    ),
+                )
+            except FileExistsError:
+                raise RuntimeError("Local backup path already exists") from None
+            try:
+                result = remote.upload(
+                    args.directory / status["archive"], args.collection, keep=args.keep
+                )
+            except FileExistsError:
+                raise RuntimeError("Remote backup path already exists") from None
         elif args.command == "upload":
             result = remote.upload(args.archive, args.collection, keep=args.keep)
         elif args.command == "list":

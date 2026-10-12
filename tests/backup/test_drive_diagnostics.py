@@ -33,6 +33,30 @@ class BackupFailureDiagnosticsTests(unittest.TestCase):
         self.assertEqual(safe_failure_reason(error), "rclone_lsjson_exit_7")
         self.assertNotIn("private", safe_failure_reason(error))
 
+    def test_file_exists_failures_use_safe_specific_or_generic_codes(self):
+        self.assertEqual(
+            safe_failure_reason(
+                FileExistsError("Never overwrite an existing remote snapshot")
+            ),
+            "remote_snapshot_already_exists",
+        )
+        self.assertEqual(
+            safe_failure_reason(FileExistsError("Snapshot output already exists")),
+            "snapshot_output_already_exists",
+        )
+        self.assertEqual(
+            safe_failure_reason(FileExistsError("/private/workspace/name.tar.gz")),
+            "backup_path_already_exists",
+        )
+        self.assertEqual(
+            safe_failure_reason(RuntimeError("Local backup path already exists")),
+            "local_backup_path_already_exists",
+        )
+        self.assertEqual(
+            safe_failure_reason(RuntimeError("Remote backup path already exists")),
+            "remote_backup_path_already_exists",
+        )
+
     def test_unrecognized_exception_text_is_never_emitted(self):
         error = RuntimeError("secret path and credential must stay private")
         self.assertEqual(safe_failure_reason(error), "RuntimeError")
