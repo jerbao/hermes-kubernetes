@@ -1,4 +1,4 @@
-from contextlib import closing
+from contextlib import closing, contextmanager
 import io
 import json
 import os
@@ -20,6 +20,43 @@ import hermes_kubernetes.backup.workspace as workspace_snapshot
 
 
 class WorkspaceBackupTests(unittest.TestCase):
+    def test_regular_files_use_bounded_memory_then_spill_to_snapshot_storage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            home, staging = base / "home", base / "staging"
+            home.mkdir()
+            staging.mkdir()
+            small = home / "small"
+            small.write_bytes(b"small fixture")
+            details = small.lstat()
+            with workspace_snapshot._spool_stable_file(small, details, staging) as (
+                spool,
+                size,
+                checksum,
+            ):
+                self.assertIsInstance(spool, io.BytesIO)
+                self.assertEqual(spool.read(), b"small fixture")
+                self.assertEqual(size, len(b"small fixture"))
+                self.assertEqual(
+                    checksum,
+                    workspace_snapshot.hashlib.sha256(b"small fixture").hexdigest(),
+                )
+            self.assertEqual(list(staging.iterdir()), [])
+
+            large = home / "large"
+            payload = b"x" * (workspace_snapshot.FILE_SPOOL_MEMORY_LIMIT + 1)
+            large.write_bytes(payload)
+            with workspace_snapshot._spool_stable_file(large, large.lstat(), staging) as (
+                spool,
+                size,
+                checksum,
+            ):
+                self.assertNotIsInstance(spool, io.BytesIO)
+                self.assertEqual(spool.read(), payload)
+                self.assertEqual(size, len(payload))
+                self.assertEqual(checksum, workspace_snapshot.hashlib.sha256(payload).hexdigest())
+            self.assertEqual(list(staging.iterdir()), [])
+
     def test_full_home_restores_git_work_browser_wal_modes_and_links_without_following_them(
         self,
     ):
@@ -136,20 +173,21 @@ class WorkspaceBackupTests(unittest.TestCase):
             (home / "first").write_text("first bytes")
             (home / "second").write_text("second bytes")
             previous = backup_job.backup(home, backups, keep=2, kind="workspace")
-            original_copy = workspace_snapshot._copy_stable_file
+            original_copy = workspace_snapshot._spool_stable_file
             changed = False
 
-            def change_first_after_second(path, destination, expected):
+            @contextmanager
+            def change_first_after_second(path, expected, staging):
                 nonlocal changed
-                result = original_copy(path, destination, expected)
+                with original_copy(path, expected, staging) as captured:
+                    yield captured
                 if path.name == "second" and not changed:
                     (home / "first").write_text("changed after first was spooled")
                     changed = True
-                return result
 
             with patch.object(
                 workspace_snapshot,
-                "_copy_stable_file",
+                "_spool_stable_file",
                 side_effect=change_first_after_second,
             ):
                 current = backup_job.backup(home, backups, keep=2, kind="workspace")
@@ -212,22 +250,23 @@ class WorkspaceBackupTests(unittest.TestCase):
             database.execute("CREATE TABLE values_table (value TEXT)")
             database.execute("INSERT INTO values_table VALUES ('catalogued')")
             database.commit()
-            original_copy = workspace_snapshot._copy_stable_file
+            original_copy = workspace_snapshot._spool_stable_file
             committed = False
 
-            def commit_before_database_capture(path, destination, expected):
+            @contextmanager
+            def commit_before_database_capture(path, expected, staging):
                 nonlocal committed
-                result = original_copy(path, destination, expected)
+                with original_copy(path, expected, staging) as captured:
+                    yield captured
                 if path.name == "a-first" and not committed:
                     database.execute("INSERT INTO values_table VALUES ('updated before capture')")
                     database.commit()
                     committed = True
-                return result
 
             try:
                 with patch.object(
                     workspace_snapshot,
-                    "_copy_stable_file",
+                    "_spool_stable_file",
                     side_effect=commit_before_database_capture,
                 ):
                     status = backup_job.backup(home, backups, kind="workspace")

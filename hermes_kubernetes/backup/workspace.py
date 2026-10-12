@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 import shutil
@@ -31,6 +32,7 @@ BROWSER_LOCKS = {
     "SingletonCookie",
     "DevToolsActivePort",
 }
+FILE_SPOOL_MEMORY_LIMIT = 8 * 1024 * 1024
 
 
 def catalogue(home, policy=None):
@@ -178,6 +180,62 @@ def _copy_stable_file(path, destination, expected):
     finally:
         if not complete:
             destination.unlink(missing_ok=True)
+
+
+@contextmanager
+def _spool_stable_file(path, expected, spill_directory, memory_limit=FILE_SPOOL_MEMORY_LIMIT):
+    """Capture a stable regular file without a network-filesystem round trip for small files."""
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    try:
+        descriptor = os.open(path, flags)
+    except FileNotFoundError:
+        raise SnapshotRetryError("Workspace paths changed during snapshot; retry") from None
+    except OSError as error:
+        if error.errno == errno.ELOOP:
+            raise SnapshotRetryError("Workspace paths changed during snapshot; retry") from None
+        raise
+
+    spool = io.BytesIO()
+    try:
+        with os.fdopen(descriptor, "rb", closefd=True) as reader:
+            opened = os.fstat(reader.fileno())
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or version(opened) != version(expected)
+                or version(_stat_version(path, opened)) != version(opened)
+            ):
+                raise _retry_path_change()
+            checksum = hashlib.sha256()
+            size = 0
+            while chunk := _read_chunk(reader):
+                if isinstance(spool, io.BytesIO) and size + len(chunk) > memory_limit:
+                    spilled = tempfile.TemporaryFile(mode="w+b", dir=spill_directory)
+                    try:
+                        spool.seek(0)
+                        shutil.copyfileobj(spool, spilled)
+                    except BaseException:
+                        spilled.close()
+                        raise
+                    spool.close()
+                    spool = spilled
+                spool.write(chunk)
+                checksum.update(chunk)
+                size += len(chunk)
+            spool.flush()
+            finished = os.fstat(reader.fileno())
+            if version(finished) != version(opened) or version(
+                _stat_version(path, opened)
+            ) != version(opened):
+                raise _retry_path_change()
+        spool.seek(0)
+        yield spool, size, checksum.hexdigest()
+    finally:
+        spool.close()
 
 
 def _capture_sqlite_sources(home, name, expected_database, staging):
@@ -336,11 +394,12 @@ def build_snapshot(home, output, *, policy=None):
                         finally:
                             source.unlink(missing_ok=True)
                     else:
-                        staged = Path(staging) / f"file-{len(entries)}"
-                        info.size, checksum = _copy_stable_file(path, staged, capture_details)
-                        with open_read(staged) as reader:
+                        with _spool_stable_file(path, capture_details, staging) as (
+                            reader,
+                            info.size,
+                            checksum,
+                        ):
                             archive.addfile(info, reader)
-                        staged.unlink()
                     entries.append(record(info, checksum=checksum, sqlite=name in databases))
             manifest = {
                 "schema": 2,

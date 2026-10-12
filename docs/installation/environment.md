@@ -168,10 +168,11 @@ operations protocol produces a consistent runtime snapshot, and a separate
 selected snapshot covers terminal `customizations`. Workspace consistency is
 per regular file and per SQLite database: each file is staged from one open
 descriptor and checked before and after its read, while each database and its
-recovery files are copied and validated together. The archive is a time-window
-capture, not a point-in-time snapshot of the entire workspace; directory entries
-are enumerated once, so concurrent additions after enumeration are included on
-the next run. `BACKUP_EXTRA_PATHS` adds literal paths relative to
+recovery files are copied and validated together. Regular files up to 8 MiB are
+spooled in bounded memory; larger files spill to the backup staging volume. The
+archive is a time-window capture, not a point-in-time snapshot of the entire
+workspace; directory entries are enumerated once, so concurrent additions
+after enumeration are included on the next run. `BACKUP_EXTRA_PATHS` adds literal paths relative to
 `TERMINAL_WORKSPACE`; the installer never selects the
 whole home or dependency caches implicitly. `BACKUP_KEEP` controls remote
 retention per state/workspace collection. Failed jobs produce a `backup-failed`
