@@ -1,9 +1,11 @@
 """Archive selected terminal data, preserving Git, links and browser state."""
 
-from datetime import datetime, timezone
+import errno
+import hashlib
 import io
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 import sqlite3
@@ -107,6 +109,121 @@ def record(info, *, checksum=None, sqlite=False):
     return result
 
 
+def _read_chunk(stream):
+    return stream.read(1024 * 1024)
+
+
+def _copy_chunks(reader, writer):
+    checksum = hashlib.sha256()
+    size = 0
+    while chunk := _read_chunk(reader):
+        writer.write(chunk)
+        checksum.update(chunk)
+        size += len(chunk)
+    return size, checksum.hexdigest()
+
+
+def _retry_path_change():
+    return SnapshotRetryError("Workspace changed during snapshot; retry")
+
+
+def _stat_version(path, expected):
+    try:
+        current = path.lstat()
+    except FileNotFoundError:
+        raise SnapshotRetryError("Workspace paths changed during snapshot; retry") from None
+    if version(current) != version(expected):
+        raise _retry_path_change()
+    return current
+
+
+def _copy_stable_file(path, destination, expected):
+    """Spool one regular file from a single descriptor and reject mid-read changes."""
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    try:
+        descriptor = os.open(path, flags)
+    except FileNotFoundError:
+        raise SnapshotRetryError("Workspace paths changed during snapshot; retry") from None
+    except OSError as error:
+        if error.errno == errno.ELOOP:
+            raise SnapshotRetryError("Workspace paths changed during snapshot; retry") from None
+        raise
+
+    complete = False
+    try:
+        with os.fdopen(descriptor, "rb", closefd=True) as reader:
+            target_fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(target_fd, "wb", closefd=True) as writer:
+                opened = os.fstat(reader.fileno())
+                if (
+                    not stat.S_ISREG(opened.st_mode)
+                    or version(opened) != version(expected)
+                    or version(_stat_version(path, opened)) != version(opened)
+                ):
+                    raise _retry_path_change()
+                size, checksum = _copy_chunks(reader, writer)
+                writer.flush()
+                finished = os.fstat(reader.fileno())
+                if version(finished) != version(opened) or version(
+                    _stat_version(path, opened)
+                ) != version(opened):
+                    raise _retry_path_change()
+        complete = True
+        return size, checksum
+    finally:
+        if not complete:
+            destination.unlink(missing_ok=True)
+
+
+def _capture_sqlite_sources(home, name, before, staging):
+    """Copy and verify a database plus its required recovery files as one unit."""
+    recovery_names = [name + suffix for suffix in ("-wal", "-journal")]
+    for sidecar in recovery_names:
+        path = home / sidecar
+        try:
+            path.lstat()
+            present = True
+        except FileNotFoundError:
+            present = False
+        if present != (sidecar in before):
+            raise SnapshotRetryError("SQLite recovery data changed during snapshot; retry")
+    sources = [name, *(sidecar for sidecar in recovery_names if sidecar in before)]
+    for source_name in sources:
+        expected = before[source_name]
+        _stat_version(home / source_name, expected)
+        if not stat.S_ISREG(expected.st_mode):
+            raise ValueError("SQLite recovery data is not a regular file")
+
+    private = Path(staging) / "source.sqlite3"
+    copied = {name: private}
+    try:
+        _copy_stable_file(home / name, private, before[name])
+        for sidecar in sources[1:]:
+            target = Path(str(private) + sidecar.removeprefix(name))
+            _copy_stable_file(home / sidecar, target, before[sidecar])
+            copied[sidecar] = target
+        # Changes between the database and sidecar copies invalidate the pair.
+        for source_name in sources:
+            _stat_version(home / source_name, before[source_name])
+        connection = sqlite3.connect(private)
+        try:
+            connection.execute("PRAGMA schema_version").fetchone()
+        finally:
+            connection.close()
+        output = Path(staging) / "database.sqlite3"
+        sqlite_snapshot(private, output)
+        return output
+    finally:
+        for target in copied.values():
+            target.unlink(missing_ok=True)
+        Path(str(private) + "-shm").unlink(missing_ok=True)
+
+
 def preview(home, policy):
     home, policy = Path(home).resolve(), normalize(policy)
     if not home.is_dir():
@@ -173,7 +290,7 @@ def build_snapshot(home, output, *, policy=None):
                         "Workspace paths changed during snapshot; retry"
                     ) from None
                 if check(current) != check(details) and name not in databases:
-                    raise SnapshotRetryError("Workspace changed during snapshot; retry")
+                    raise _retry_path_change()
                 info = tarfile.TarInfo(name)
                 info.mode, info.uid, info.gid = (
                     stat.S_IMODE(details.st_mode),
@@ -186,88 +303,37 @@ def build_snapshot(home, output, *, policy=None):
                     archive.addfile(info)
                     entries.append(record(info))
                 elif stat.S_ISLNK(details.st_mode):
-                    info.type, info.linkname = tarfile.SYMTYPE, os.readlink(path)
+                    try:
+                        target = os.readlink(path)
+                        current_after = path.lstat()
+                    except FileNotFoundError:
+                        raise SnapshotRetryError(
+                            "Workspace paths changed during snapshot; retry"
+                        ) from None
+                    if version(current_after) != version(details):
+                        raise _retry_path_change()
+                    info.type, info.linkname = tarfile.SYMTYPE, target
                     archive.addfile(info)
                     entries.append(record(info))
                 else:
                     if info.mode & 0o6000:
                         raise ValueError("Workspace contains a privileged executable mode")
-                    source = path
                     if name in databases:
-                        # Chrome can hold exclusive locks even on idle caches.
-                        # Copy the database and recovery data privately, then
-                        # let SQLite recover/normalize only those copies. No
-                        # SQLite connection, WAL lock or write touches the home.
-                        private = Path(staging) / "source.sqlite3"
-                        recovery = [private]
+                        source = _capture_sqlite_sources(home, name, before, staging)
                         try:
-                            shutil.copyfile(path, private)
-                            private.chmod(0o600)
-                            for suffix in ("-wal", "-journal"):
-                                sidecar = home / (name + suffix)
-                                if name + suffix in before:
-                                    if not stat.S_ISREG(before[name + suffix].st_mode):
-                                        raise ValueError(
-                                            "SQLite recovery data is not a regular file"
-                                        )
-                                    copied = Path(str(private) + suffix)
-                                    try:
-                                        shutil.copyfile(sidecar, copied)
-                                    except FileNotFoundError:
-                                        raise SnapshotRetryError(
-                                            "SQLite recovery data changed during snapshot; retry"
-                                        ) from None
-                                    copied.chmod(0o600)
-                                    recovery.append(copied)
-                            # A hot rollback journal needs a writable *private*
-                            # connection before the read-only backup operation.
-                            connection = sqlite3.connect(private)
-                            try:
-                                connection.execute("PRAGMA schema_version").fetchone()
-                            finally:
-                                connection.close()
-                            source = Path(staging) / "database.sqlite3"
-                            sqlite_snapshot(private, source)
+                            info.size = source.stat().st_size
+                            checksum = digest(source)
+                            with open_read(source) as reader:
+                                archive.addfile(info, reader)
                         finally:
-                            for copied in [*recovery, Path(str(private) + "-shm")]:
-                                copied.unlink(missing_ok=True)
-                    info.size = source.stat().st_size
-                    checksum = digest(source)
-                    try:
-                        with open_read(source) as reader:
+                            source.unlink(missing_ok=True)
+                    else:
+                        staged = Path(staging) / f"file-{len(entries)}"
+                        info.size, checksum = _copy_stable_file(path, staged, details)
+                        with open_read(staged) as reader:
                             archive.addfile(info, reader)
-                    except FileNotFoundError:
-                        raise SnapshotRetryError(
-                            "Workspace changed during snapshot; retry"
-                        ) from None
+                        staged.unlink()
                     entries.append(record(info, checksum=checksum, sqlite=name in databases))
-                    if source != path:
-                        source.unlink()
-            try:
-                after, _ = catalogue(home, policy)
-            except FileNotFoundError:
-                raise SnapshotRetryError("Workspace paths changed during snapshot; retry") from None
-            if set(after) - sidecars != set(before) - sidecars:
-                raise SnapshotRetryError("Workspace paths changed during snapshot; retry")
-            for name in set(before) - sidecars:
-                check = identity if stat.S_ISDIR(before[name].st_mode) else version
-                if check(before[name]) != check(after[name]):
-                    raise SnapshotRetryError("Workspace changed during snapshot; retry")
-            # WAL/journal are folded into the archive but their source versions
-            # must stay unchanged too. SHM is only a regenerable lock index.
-            for name in sidecars:
-                if name.endswith("-shm"):
-                    continue
-                if (
-                    (name in before) != (name in after)
-                    or name in before
-                    and version(before[name]) != version(after[name])
-                ):
-                    raise SnapshotRetryError("SQLite recovery data changed during snapshot; retry")
-            if policy is not None and not review(home, after, policy)["ready"]:
-                raise SnapshotRetryError(
-                    "Workspace reconstruction conditions changed during snapshot; retry"
-                )
             manifest = {
                 "schema": 2,
                 "kind": "workspace",

@@ -128,61 +128,109 @@ class WorkspaceBackupTests(unittest.TestCase):
                 sock.close()
                 database.close()
 
-    def test_changed_file_after_it_was_copied_rejects_backup_and_preserves_previous_copy(
-        self,
-    ):
+    def test_earlier_file_change_during_later_copy_keeps_the_stable_spooled_entry(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory).resolve()
             home, backups = base / "home", base / "backups"
             home.mkdir()
-            (home / "first").write_text("first")
-            (home / "second").write_text("second")
-            status = backup_job.backup(home, backups, kind="workspace")
-            previous = (backups / "latest.json").read_bytes()
-            attempts = 0
-
-            def change_earlier_file(path):
-                nonlocal attempts
-                if path.name == "second":
-                    attempts += 1
-                    (home / "first").write_text("changed after copying")
-                return digest(path)
-
-            with patch.object(workspace_snapshot, "digest", side_effect=change_earlier_file):
-                with self.assertRaises(RuntimeError):
-                    backup_job.backup(home, backups, keep=1, kind="workspace")
-            self.assertTrue((backups / status["archive"]).exists())
-            self.assertEqual((backups / "latest.json").read_bytes(), previous)
-            self.assertEqual(len(list(backups.glob("*.tar.gz"))), 1)
-            self.assertEqual(attempts, 2)
-
-    def test_transient_workspace_change_retries_once_and_publishes_consistent_copy(self):
-        with tempfile.TemporaryDirectory() as directory:
-            base = Path(directory).resolve()
-            home, backups = base / "home", base / "backups"
-            home.mkdir()
-            (home / "first").write_text("first")
-            (home / "second").write_text("second")
-            real_digest = digest
+            (home / "first").write_text("first bytes")
+            (home / "second").write_text("second bytes")
+            previous = backup_job.backup(home, backups, keep=2, kind="workspace")
+            original_copy = workspace_snapshot._copy_stable_file
             changed = False
 
-            def change_once(path):
+            def change_first_after_second(path, destination, expected):
                 nonlocal changed
-                value = real_digest(path)
+                result = original_copy(path, destination, expected)
                 if path.name == "second" and not changed:
-                    (home / "first").write_text("updated before retry")
+                    (home / "first").write_text("changed after first was spooled")
                     changed = True
-                return value
+                return result
 
-            with patch.object(workspace_snapshot, "digest", side_effect=change_once):
+            with patch.object(
+                workspace_snapshot,
+                "_copy_stable_file",
+                side_effect=change_first_after_second,
+            ):
+                current = backup_job.backup(home, backups, keep=2, kind="workspace")
+
+            self.assertTrue(changed)
+            self.assertTrue((backups / previous["archive"]).exists())
+            restored = base / "restored"
+            restore(
+                backups / current["archive"],
+                restored,
+                sha256=current["sha256"],
+            )
+            self.assertEqual((restored / "first").read_text(), "first bytes")
+            self.assertEqual((restored / "second").read_text(), "second bytes")
+
+    def test_file_change_during_its_own_capture_retries_and_publishes_new_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            home, backups = base / "home", base / "backups"
+            home.mkdir()
+            changing = home / "first"
+            changing.write_text("original bytes")
+            (home / "second").write_text("second bytes")
+            original_read = workspace_snapshot._read_chunk
+            changed = False
+
+            def change_during_read(stream):
+                nonlocal changed
+                chunk = original_read(stream)
+                if not changed:
+                    changing.write_text("updated while its fd was being captured")
+                    changed = True
+                return chunk
+
+            with patch.object(workspace_snapshot, "_read_chunk", side_effect=change_during_read):
                 status = backup_job.backup(home, backups, kind="workspace")
 
             self.assertTrue(changed)
-            self.assertTrue((backups / status["archive"]).is_file())
             restored = base / "restored"
-            restore(backups / status["archive"], restored, sha256=status["sha256"])
-            self.assertEqual((restored / "first").read_text(), "updated before retry")
-            self.assertEqual((restored / "second").read_text(), "second")
+            restore(
+                backups / status["archive"],
+                restored,
+                sha256=status["sha256"],
+            )
+            self.assertEqual(
+                (restored / "first").read_text(),
+                "updated while its fd was being captured",
+            )
+            self.assertEqual((restored / "second").read_text(), "second bytes")
+
+    def test_repeated_mid_read_changes_preserve_the_previous_verified_archive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            home, backups = base / "home", base / "backups"
+            home.mkdir()
+            changing = home / "first"
+            changing.write_text("initial bytes")
+            previous = backup_job.backup(home, backups, kind="workspace")
+            latest_before = (backups / "latest.json").read_bytes()
+            original_read = workspace_snapshot._read_chunk
+            mutations = 0
+
+            def change_during_read(stream):
+                nonlocal mutations
+                chunk = original_read(stream)
+                mutations += 1
+                changing.write_text(f"concurrent update {mutations}")
+                return chunk
+
+            with patch.object(
+                workspace_snapshot,
+                "_read_chunk",
+                side_effect=change_during_read,
+            ):
+                with self.assertRaises(RuntimeError):
+                    backup_job.backup(home, backups, keep=1, kind="workspace")
+
+            self.assertGreaterEqual(mutations, 2)
+            self.assertEqual((backups / "latest.json").read_bytes(), latest_before)
+            self.assertTrue((backups / previous["archive"]).is_file())
+            self.assertEqual(len(list(backups.glob("*.tar.gz"))), 1)
 
     def test_untyped_runtime_error_is_not_retried(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -240,9 +288,7 @@ class WorkspaceBackupTests(unittest.TestCase):
             finally:
                 db.close()
 
-    def test_wal_commit_during_workspace_copy_is_rejected_without_touching_existing_backups(
-        self,
-    ):
+    def test_wal_commit_after_private_database_capture_keeps_valid_archive(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory).resolve()
             home = base / "home"
@@ -253,10 +299,9 @@ class WorkspaceBackupTests(unittest.TestCase):
                 db.execute("CREATE TABLE cookies(value TEXT)")
                 db.execute("INSERT INTO cookies VALUES ('before')")
                 db.commit()
-                status = backup_job.backup(home, base / "backups", kind="workspace")
                 original = workspace_snapshot.sqlite_snapshot
 
-                def commit_during_private_backup(source, destination):
+                def commit_after_private_capture(source, destination):
                     result = original(source, destination)
                     db.execute("INSERT INTO cookies VALUES ('during copy')")
                     db.commit()
@@ -265,12 +310,24 @@ class WorkspaceBackupTests(unittest.TestCase):
                 with patch.object(
                     workspace_snapshot,
                     "sqlite_snapshot",
-                    side_effect=commit_during_private_backup,
+                    side_effect=commit_after_private_capture,
                 ):
-                    with self.assertRaises(RuntimeError):
-                        backup_job.backup(home, base / "backups", keep=1, kind="workspace")
-                self.assertTrue((base / "backups" / status["archive"]).exists())
-                self.assertEqual(len(list((base / "backups").glob("*.tar.gz"))), 1)
+                    status = backup_job.backup(home, base / "backups", kind="workspace")
+
+                restore(
+                    base / "backups" / status["archive"],
+                    base / "restored",
+                    sha256=status["sha256"],
+                )
+                with closing(sqlite3.connect(base / "restored/cookies")) as restored:
+                    self.assertEqual(
+                        restored.execute("SELECT value FROM cookies").fetchall(),
+                        [("before",)],
+                    )
+                self.assertEqual(
+                    db.execute("SELECT value FROM cookies").fetchall(),
+                    [("before",), ("during copy",)],
+                )
             finally:
                 db.close()
 
@@ -289,19 +346,19 @@ class WorkspaceBackupTests(unittest.TestCase):
                 db.commit()
                 wal = Path(str(database_path) + "-wal")
                 self.assertTrue(wal.exists())
-                original_copy = workspace_snapshot.shutil.copyfile
+                original_open = workspace_snapshot.os.open
                 failed_once = False
 
-                def transient_missing_sidecar(source, destination):
+                def transient_missing_sidecar(path, flags, *args, **kwargs):
                     nonlocal failed_once
-                    if str(source) == str(wal) and not failed_once:
+                    if str(path) == str(wal) and not failed_once:
                         failed_once = True
-                        raise FileNotFoundError(str(source))
-                    return original_copy(source, destination)
+                        raise FileNotFoundError(str(path))
+                    return original_open(path, flags, *args, **kwargs)
 
                 with patch.object(
-                    workspace_snapshot.shutil,
-                    "copyfile",
+                    workspace_snapshot.os,
+                    "open",
                     side_effect=transient_missing_sidecar,
                 ):
                     status = backup_job.backup(home, base / "backups", kind="workspace")
