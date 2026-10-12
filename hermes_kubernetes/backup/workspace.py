@@ -198,13 +198,11 @@ def _capture_sqlite_sources(home, name, expected_database, staging):
             raise ValueError("SQLite recovery data is not a regular file")
 
     private = Path(staging) / "source.sqlite3"
-    copied = {name: private}
     try:
         _copy_stable_file(home / name, private, sources[name])
         for sidecar in source_names[1:]:
             target = Path(str(private) + sidecar.removeprefix(name))
             _copy_stable_file(home / sidecar, target, sources[sidecar])
-            copied[sidecar] = target
         # Changes between the database and sidecar copies invalidate the pair.
         for source_name in source_names:
             _stat_version(home / source_name, sources[source_name])
@@ -228,9 +226,8 @@ def _capture_sqlite_sources(home, name, expected_database, staging):
         sqlite_snapshot(private, output)
         return output
     finally:
-        for target in copied.values():
-            target.unlink(missing_ok=True)
-        Path(str(private) + "-shm").unlink(missing_ok=True)
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            Path(str(private) + suffix).unlink(missing_ok=True)
 
 
 def preview(home, policy):

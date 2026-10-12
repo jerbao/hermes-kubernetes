@@ -369,6 +369,48 @@ class WorkspaceBackupTests(unittest.TestCase):
             finally:
                 db.close()
 
+    def test_sqlite_generated_private_wal_is_removed_before_next_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            home, staging = base / "home", base / "staging"
+            home.mkdir()
+            staging.mkdir()
+
+            first = home / "first.db"
+            with closing(sqlite3.connect(first)) as db:
+                db.execute("PRAGMA journal_mode=WAL")
+                db.execute("CREATE TABLE values_table(value)")
+                db.commit()
+                db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            self.assertFalse(Path(str(first) + "-wal").exists())
+
+            second = home / "second.db"
+            writer = sqlite3.connect(second)
+            try:
+                writer.execute("PRAGMA journal_mode=WAL")
+                writer.execute("CREATE TABLE values_table(value)")
+                writer.execute("INSERT INTO values_table VALUES ('active')")
+                writer.commit()
+                self.assertTrue(Path(str(second) + "-wal").exists())
+
+                status = backup_job.backup(home, base / "backups", kind="workspace")
+                self.assertEqual(status["databases"], 2)
+
+                first_copy = workspace_snapshot._capture_sqlite_sources(
+                    home, first.name, first.lstat(), staging
+                )
+                first_copy.unlink()
+                self.assertFalse((staging / "source.sqlite3-wal").exists())
+
+                second_copy = workspace_snapshot._capture_sqlite_sources(
+                    home, second.name, second.lstat(), staging
+                )
+                self.assertTrue(second_copy.is_file())
+                second_copy.unlink()
+                self.assertEqual(list(staging.iterdir()), [])
+            finally:
+                writer.close()
+
     def test_wal_commit_after_private_database_capture_keeps_valid_archive(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory).resolve()
