@@ -9,16 +9,23 @@ import argparse
 from contextlib import nullcontext
 from datetime import datetime, timezone
 import fcntl
+from functools import partial
 import json
 import os
 from pathlib import Path
 import tempfile
+import time
 import uuid
 
 from hermes_kubernetes.backup.archive import retain_backups, verify_archive
 from hermes_kubernetes.backup.state import build_snapshot, digest
 from hermes_kubernetes.terminal.guard import guard
 from hermes_kubernetes.backup.cache import bounded_cache
+from hermes_kubernetes.backup.errors import SnapshotRetryError
+
+# One retry bounds extra I/O while allowing brief workspace/WAL churn to settle.
+SNAPSHOT_ATTEMPTS = 2
+SNAPSHOT_RETRY_DELAY_SECONDS = 1
 
 
 def backup(source, directory, keep=6, *, kind="state", policy=None, workspace_lock=None):
@@ -55,9 +62,17 @@ def backup(source, directory, keep=6, *, kind="state", policy=None, workspace_lo
                     build_snapshot as build_workspace,
                 )
 
-                build_workspace(source, archive, policy=policy)
+                build = partial(build_workspace, source, archive, policy=policy)
             else:
-                build_snapshot(source, archive)
+                build = partial(build_snapshot, source, archive)
+            for attempt in range(SNAPSHOT_ATTEMPTS):
+                try:
+                    build()
+                    break
+                except SnapshotRetryError:
+                    if attempt + 1 == SNAPSHOT_ATTEMPTS:
+                        raise
+                    time.sleep(SNAPSHOT_RETRY_DELAY_SECONDS)
             verification = verify_archive(archive)
             status = {
                 "archive": name,

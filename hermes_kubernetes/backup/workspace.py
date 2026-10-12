@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 
 from hermes_kubernetes.backup.state import MANIFEST, digest, sqlite_snapshot
+from hermes_kubernetes.backup.errors import SnapshotRetryError
 from hermes_kubernetes.backup.policy import (
     normalize,
     review,
@@ -35,9 +36,16 @@ def catalogue(home, policy=None):
 
     def visit(parent):
         nonlocal skipped
-        for path in sorted(parent.iterdir()):
+        try:
+            children = sorted(parent.iterdir())
+        except FileNotFoundError:
+            raise SnapshotRetryError("Workspace paths changed during snapshot; retry") from None
+        for path in children:
             relative = path.relative_to(home).as_posix()
-            details = path.lstat()
+            try:
+                details = path.lstat()
+            except FileNotFoundError:
+                raise SnapshotRetryError("Workspace paths changed during snapshot; retry") from None
             if policy is not None and not selected(relative, stat.S_ISDIR(details.st_mode), policy):
                 continue
             if path.name == ".snap" and stat.S_ISDIR(details.st_mode):
@@ -127,9 +135,12 @@ def build_snapshot(home, output, *, policy=None):
     databases = set()
     for name, details in before.items():
         if stat.S_ISREG(details.st_mode):
-            with (home / name).open("rb") as handle:
-                if handle.read(16) == b"SQLite format 3\x00":
-                    databases.add(name)
+            try:
+                with (home / name).open("rb") as handle:
+                    if handle.read(16) == b"SQLite format 3\x00":
+                        databases.add(name)
+            except FileNotFoundError:
+                raise SnapshotRetryError("Workspace changed during snapshot; retry") from None
     # Only sidecars of identified SQLite are omitted. A personal file whose
     # name happens to end in -wal/-shm remains a normal archived file.
     sidecars = {name + suffix for name in databases for suffix in ("-wal", "-shm", "-journal")}
@@ -155,8 +166,14 @@ def build_snapshot(home, output, *, policy=None):
                     continue
                 path = home / name
                 check = identity if stat.S_ISDIR(details.st_mode) else version
-                if check(path.lstat()) != check(details) and name not in databases:
-                    raise RuntimeError("Workspace changed during snapshot; retry")
+                try:
+                    current = path.lstat()
+                except FileNotFoundError:
+                    raise SnapshotRetryError(
+                        "Workspace paths changed during snapshot; retry"
+                    ) from None
+                if check(current) != check(details) and name not in databases:
+                    raise SnapshotRetryError("Workspace changed during snapshot; retry")
                 info = tarfile.TarInfo(name)
                 info.mode, info.uid, info.gid = (
                     stat.S_IMODE(details.st_mode),
@@ -194,7 +211,12 @@ def build_snapshot(home, output, *, policy=None):
                                             "SQLite recovery data is not a regular file"
                                         )
                                     copied = Path(str(private) + suffix)
-                                    shutil.copyfile(sidecar, copied)
+                                    try:
+                                        shutil.copyfile(sidecar, copied)
+                                    except FileNotFoundError:
+                                        raise SnapshotRetryError(
+                                            "SQLite recovery data changed during snapshot; retry"
+                                        ) from None
                                     copied.chmod(0o600)
                                     recovery.append(copied)
                             # A hot rollback journal needs a writable *private*
@@ -211,18 +233,26 @@ def build_snapshot(home, output, *, policy=None):
                                 copied.unlink(missing_ok=True)
                     info.size = source.stat().st_size
                     checksum = digest(source)
-                    with open_read(source) as reader:
-                        archive.addfile(info, reader)
+                    try:
+                        with open_read(source) as reader:
+                            archive.addfile(info, reader)
+                    except FileNotFoundError:
+                        raise SnapshotRetryError(
+                            "Workspace changed during snapshot; retry"
+                        ) from None
                     entries.append(record(info, checksum=checksum, sqlite=name in databases))
                     if source != path:
                         source.unlink()
-            after, _ = catalogue(home, policy)
+            try:
+                after, _ = catalogue(home, policy)
+            except FileNotFoundError:
+                raise SnapshotRetryError("Workspace paths changed during snapshot; retry") from None
             if set(after) - sidecars != set(before) - sidecars:
-                raise RuntimeError("Workspace paths changed during snapshot; retry")
+                raise SnapshotRetryError("Workspace paths changed during snapshot; retry")
             for name in set(before) - sidecars:
                 check = identity if stat.S_ISDIR(before[name].st_mode) else version
                 if check(before[name]) != check(after[name]):
-                    raise RuntimeError("Workspace changed during snapshot; retry")
+                    raise SnapshotRetryError("Workspace changed during snapshot; retry")
             # WAL/journal are folded into the archive but their source versions
             # must stay unchanged too. SHM is only a regenerable lock index.
             for name in sidecars:
@@ -233,9 +263,9 @@ def build_snapshot(home, output, *, policy=None):
                     or name in before
                     and version(before[name]) != version(after[name])
                 ):
-                    raise RuntimeError("SQLite recovery data changed during snapshot; retry")
+                    raise SnapshotRetryError("SQLite recovery data changed during snapshot; retry")
             if policy is not None and not review(home, after, policy)["ready"]:
-                raise RuntimeError(
+                raise SnapshotRetryError(
                     "Workspace reconstruction conditions changed during snapshot; retry"
                 )
             manifest = {

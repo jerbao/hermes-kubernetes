@@ -13,6 +13,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from hermes_kubernetes.backup.cache import open_read
+from hermes_kubernetes.backup.errors import SnapshotRetryError
 
 EXCLUDED = {
     "hermes-agent",
@@ -95,7 +96,7 @@ def sqlite_snapshot(path, output):
 
     def progress(status, remaining, total):
         if time.monotonic() - began > 120:
-            raise RuntimeError("SQLite snapshot timed out")
+            raise SnapshotRetryError("SQLite snapshot timed out")
 
     with (
         closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as original,
@@ -182,7 +183,12 @@ def build_snapshot(home, output, *, filter_func=None):
                     if is_sqlite:
                         source.unlink()
                     else:
-                        after = path.stat()
+                        try:
+                            after = path.stat()
+                        except FileNotFoundError:
+                            raise SnapshotRetryError(
+                                "Personal file changed during snapshot; retry"
+                            ) from None
                         if (
                             before.st_ino,
                             before.st_mtime_ns,
@@ -194,7 +200,7 @@ def build_snapshot(home, output, *, filter_func=None):
                             after.st_ctime_ns,
                             after.st_size,
                         ):
-                            raise RuntimeError("Personal file changed during snapshot; retry")
+                            raise SnapshotRetryError("Personal file changed during snapshot; retry")
                     entries.append(entry)
             try:
                 validate_state_links(links, {entry["path"] for entry in entries})

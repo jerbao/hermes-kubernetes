@@ -13,6 +13,20 @@ class BackupFailureDiagnosticsTests(unittest.TestCase):
             safe_failure_reason(RuntimeError("Workspace paths changed during snapshot; retry")),
             "workspace_paths_changed_during_snapshot",
         )
+        self.assertEqual(
+            safe_failure_reason(
+                RuntimeError("SQLite recovery data changed during snapshot; retry")
+            ),
+            "workspace_sqlite_recovery_changed_during_snapshot",
+        )
+        self.assertEqual(
+            safe_failure_reason(RuntimeError("Personal file changed during snapshot; retry")),
+            "state_file_changed_during_snapshot",
+        )
+        self.assertEqual(
+            safe_failure_reason(RuntimeError("SQLite snapshot timed out")),
+            "sqlite_snapshot_timed_out",
+        )
 
     def test_remote_failure_reports_only_command_and_exit_code(self):
         error = RemoteError("lsjson", 7, b"private token and remote path")

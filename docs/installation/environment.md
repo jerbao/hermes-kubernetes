@@ -169,7 +169,9 @@ selected snapshot covers terminal `customizations`. `BACKUP_EXTRA_PATHS` adds
 literal paths relative to `TERMINAL_WORKSPACE`; the installer never selects the
 whole home or dependency caches implicitly. `BACKUP_KEEP` controls remote
 retention per state/workspace collection. Failed jobs produce a `backup-failed`
-container log and exit unsuccessfully.
+container log and exit unsuccessfully. A workspace or SQLite snapshot that detects
+source changes gets one bounded retry; persistent changes still fail without
+publishing a partial archive or pruning the last verified backup.
 
 For API HTTPS access, `INTERNET_EGRESS=external` explicitly allows TCP 80/443 to
 public addresses, excluding private infrastructure and tailnet ranges. With

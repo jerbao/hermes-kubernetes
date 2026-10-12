@@ -139,9 +139,12 @@ class WorkspaceBackupTests(unittest.TestCase):
             (home / "second").write_text("second")
             status = backup_job.backup(home, backups, kind="workspace")
             previous = (backups / "latest.json").read_bytes()
+            attempts = 0
 
             def change_earlier_file(path):
+                nonlocal attempts
                 if path.name == "second":
+                    attempts += 1
                     (home / "first").write_text("changed after copying")
                 return digest(path)
 
@@ -151,6 +154,50 @@ class WorkspaceBackupTests(unittest.TestCase):
             self.assertTrue((backups / status["archive"]).exists())
             self.assertEqual((backups / "latest.json").read_bytes(), previous)
             self.assertEqual(len(list(backups.glob("*.tar.gz"))), 1)
+            self.assertEqual(attempts, 2)
+
+    def test_transient_workspace_change_retries_once_and_publishes_consistent_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            home, backups = base / "home", base / "backups"
+            home.mkdir()
+            (home / "first").write_text("first")
+            (home / "second").write_text("second")
+            real_digest = digest
+            changed = False
+
+            def change_once(path):
+                nonlocal changed
+                value = real_digest(path)
+                if path.name == "second" and not changed:
+                    (home / "first").write_text("updated before retry")
+                    changed = True
+                return value
+
+            with patch.object(workspace_snapshot, "digest", side_effect=change_once):
+                status = backup_job.backup(home, backups, kind="workspace")
+
+            self.assertTrue(changed)
+            self.assertTrue((backups / status["archive"]).is_file())
+            restored = base / "restored"
+            restore(backups / status["archive"], restored, sha256=status["sha256"])
+            self.assertEqual((restored / "first").read_text(), "updated before retry")
+            self.assertEqual((restored / "second").read_text(), "second")
+
+    def test_untyped_runtime_error_is_not_retried(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            home = base / "home"
+            home.mkdir()
+            (home / "file").write_text("fixture")
+            with patch.object(
+                workspace_snapshot,
+                "build_snapshot",
+                side_effect=RuntimeError("unclassified failure"),
+            ) as build:
+                with self.assertRaisesRegex(RuntimeError, "unclassified failure"):
+                    backup_job.backup(home, base / "backups", kind="workspace")
+            build.assert_called_once()
 
     def test_retention_for_workspace_never_deletes_state_backups(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -224,6 +271,53 @@ class WorkspaceBackupTests(unittest.TestCase):
                         backup_job.backup(home, base / "backups", keep=1, kind="workspace")
                 self.assertTrue((base / "backups" / status["archive"]).exists())
                 self.assertEqual(len(list((base / "backups").glob("*.tar.gz"))), 1)
+            finally:
+                db.close()
+
+    def test_missing_catalogued_wal_retries_without_touching_the_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            home = base / "home"
+            home.mkdir()
+            database_path = home / "cookies.db"
+            db = sqlite3.connect(database_path)
+            try:
+                db.execute("PRAGMA journal_mode=WAL")
+                db.execute("PRAGMA wal_autocheckpoint=0")
+                db.execute("CREATE TABLE cookies(value TEXT)")
+                db.execute("INSERT INTO cookies VALUES ('preserve')")
+                db.commit()
+                wal = Path(str(database_path) + "-wal")
+                self.assertTrue(wal.exists())
+                original_copy = workspace_snapshot.shutil.copyfile
+                failed_once = False
+
+                def transient_missing_sidecar(source, destination):
+                    nonlocal failed_once
+                    if str(source) == str(wal) and not failed_once:
+                        failed_once = True
+                        raise FileNotFoundError(str(source))
+                    return original_copy(source, destination)
+
+                with patch.object(
+                    workspace_snapshot.shutil,
+                    "copyfile",
+                    side_effect=transient_missing_sidecar,
+                ):
+                    status = backup_job.backup(home, base / "backups", kind="workspace")
+
+                self.assertTrue(failed_once)
+                self.assertTrue(wal.exists())
+                restore(
+                    base / "backups" / status["archive"],
+                    base / "restored",
+                    sha256=status["sha256"],
+                )
+                with closing(sqlite3.connect(base / "restored/cookies.db")) as restored:
+                    self.assertEqual(
+                        restored.execute("SELECT value FROM cookies").fetchone()[0],
+                        "preserve",
+                    )
             finally:
                 db.close()
 

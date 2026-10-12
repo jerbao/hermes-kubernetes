@@ -42,7 +42,8 @@ _SAFE_FAILURE_CODES = {
     "Workspace paths changed during snapshot; retry": "workspace_paths_changed_during_snapshot",
     "SQLite recovery data changed during snapshot; retry": "workspace_sqlite_recovery_changed_during_snapshot",
     "Workspace reconstruction conditions changed during snapshot; retry": "workspace_policy_changed_during_snapshot",
-    "SQLite snapshot timed out": "workspace_sqlite_snapshot_timed_out",
+    "Personal file changed during snapshot; retry": "state_file_changed_during_snapshot",
+    "SQLite snapshot timed out": "sqlite_snapshot_timed_out",
 }
 
 
