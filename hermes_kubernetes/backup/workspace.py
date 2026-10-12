@@ -180,21 +180,19 @@ def _copy_stable_file(path, destination, expected):
             destination.unlink(missing_ok=True)
 
 
-def _capture_sqlite_sources(home, name, before, staging):
+def _capture_sqlite_sources(home, name, expected_database, staging):
     """Copy and verify a database plus its required recovery files as one unit."""
     recovery_names = [name + suffix for suffix in ("-wal", "-journal")]
+    sources = {name: expected_database}
     for sidecar in recovery_names:
         path = home / sidecar
         try:
-            path.lstat()
-            present = True
+            sources[sidecar] = path.lstat()
         except FileNotFoundError:
-            present = False
-        if present != (sidecar in before):
-            raise SnapshotRetryError("SQLite recovery data changed during snapshot; retry")
-    sources = [name, *(sidecar for sidecar in recovery_names if sidecar in before)]
-    for source_name in sources:
-        expected = before[source_name]
+            continue
+    source_names = [name, *(sidecar for sidecar in recovery_names if sidecar in sources)]
+    for source_name in source_names:
+        expected = sources[source_name]
         _stat_version(home / source_name, expected)
         if not stat.S_ISREG(expected.st_mode):
             raise ValueError("SQLite recovery data is not a regular file")
@@ -202,14 +200,25 @@ def _capture_sqlite_sources(home, name, before, staging):
     private = Path(staging) / "source.sqlite3"
     copied = {name: private}
     try:
-        _copy_stable_file(home / name, private, before[name])
-        for sidecar in sources[1:]:
+        _copy_stable_file(home / name, private, sources[name])
+        for sidecar in source_names[1:]:
             target = Path(str(private) + sidecar.removeprefix(name))
-            _copy_stable_file(home / sidecar, target, before[sidecar])
+            _copy_stable_file(home / sidecar, target, sources[sidecar])
             copied[sidecar] = target
         # Changes between the database and sidecar copies invalidate the pair.
-        for source_name in sources:
-            _stat_version(home / source_name, before[source_name])
+        for source_name in source_names:
+            _stat_version(home / source_name, sources[source_name])
+        for sidecar in recovery_names:
+            try:
+                present = (home / sidecar).lstat()
+            except FileNotFoundError:
+                if sidecar in sources:
+                    raise SnapshotRetryError(
+                        "SQLite recovery data changed during snapshot; retry"
+                    ) from None
+            else:
+                if sidecar not in sources or version(present) != version(sources[sidecar]):
+                    raise SnapshotRetryError("SQLite recovery data changed during snapshot; retry")
         connection = sqlite3.connect(private)
         try:
             connection.execute("PRAGMA schema_version").fetchone()
@@ -282,27 +291,29 @@ def build_snapshot(home, output, *, policy=None):
                 if name in sidecars:
                     continue
                 path = home / name
-                check = identity if stat.S_ISDIR(details.st_mode) else version
                 try:
                     current = path.lstat()
                 except FileNotFoundError:
                     raise SnapshotRetryError(
                         "Workspace paths changed during snapshot; retry"
                     ) from None
-                if check(current) != check(details) and name not in databases:
+                if stat.S_IFMT(current.st_mode) != stat.S_IFMT(details.st_mode):
                     raise _retry_path_change()
+                if stat.S_ISDIR(details.st_mode) and identity(current) != identity(details):
+                    raise _retry_path_change()
+                capture_details = current
                 info = tarfile.TarInfo(name)
                 info.mode, info.uid, info.gid = (
-                    stat.S_IMODE(details.st_mode),
-                    details.st_uid,
-                    details.st_gid,
+                    stat.S_IMODE(capture_details.st_mode),
+                    capture_details.st_uid,
+                    capture_details.st_gid,
                 )
-                info.mtime = details.st_mtime
-                if stat.S_ISDIR(details.st_mode):
+                info.mtime = capture_details.st_mtime
+                if stat.S_ISDIR(capture_details.st_mode):
                     info.type = tarfile.DIRTYPE
                     archive.addfile(info)
                     entries.append(record(info))
-                elif stat.S_ISLNK(details.st_mode):
+                elif stat.S_ISLNK(capture_details.st_mode):
                     try:
                         target = os.readlink(path)
                         current_after = path.lstat()
@@ -310,7 +321,7 @@ def build_snapshot(home, output, *, policy=None):
                         raise SnapshotRetryError(
                             "Workspace paths changed during snapshot; retry"
                         ) from None
-                    if version(current_after) != version(details):
+                    if version(current_after) != version(capture_details):
                         raise _retry_path_change()
                     info.type, info.linkname = tarfile.SYMTYPE, target
                     archive.addfile(info)
@@ -319,7 +330,7 @@ def build_snapshot(home, output, *, policy=None):
                     if info.mode & 0o6000:
                         raise ValueError("Workspace contains a privileged executable mode")
                     if name in databases:
-                        source = _capture_sqlite_sources(home, name, before, staging)
+                        source = _capture_sqlite_sources(home, name, capture_details, staging)
                         try:
                             info.size = source.stat().st_size
                             checksum = digest(source)
@@ -329,7 +340,7 @@ def build_snapshot(home, output, *, policy=None):
                             source.unlink(missing_ok=True)
                     else:
                         staged = Path(staging) / f"file-{len(entries)}"
-                        info.size, checksum = _copy_stable_file(path, staged, details)
+                        info.size, checksum = _copy_stable_file(path, staged, capture_details)
                         with open_read(staged) as reader:
                             archive.addfile(info, reader)
                         staged.unlink()

@@ -165,6 +165,87 @@ class WorkspaceBackupTests(unittest.TestCase):
             self.assertEqual((restored / "first").read_text(), "first bytes")
             self.assertEqual((restored / "second").read_text(), "second bytes")
 
+    def test_file_changed_after_inventory_is_captured_from_its_fresh_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            home, backups = base / "home", base / "backups"
+            home.mkdir()
+            changing = home / "first"
+            changing.write_text("catalogued bytes")
+            original_catalogue = workspace_snapshot.catalogue
+            changed = False
+            catalogues = 0
+
+            def update_after_inventory(directory, policy=None):
+                nonlocal changed, catalogues
+                entries = original_catalogue(directory, policy)
+                catalogues += 1
+                if not changed:
+                    changing.write_text("updated before entry capture")
+                    changed = True
+                return entries
+
+            with patch.object(
+                workspace_snapshot,
+                "catalogue",
+                side_effect=update_after_inventory,
+            ):
+                status = backup_job.backup(home, backups, kind="workspace")
+
+            self.assertEqual(catalogues, 1)
+            restored = base / "restored"
+            restore(
+                backups / status["archive"],
+                restored,
+                sha256=status["sha256"],
+            )
+            self.assertEqual((restored / "first").read_text(), "updated before entry capture")
+
+    def test_database_changed_before_its_entry_capture_uses_fresh_recovery_pair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            home, backups = base / "home", base / "backups"
+            home.mkdir()
+            (home / "a-first").write_text("fixture")
+            database_path = home / "z-database"
+            database = sqlite3.connect(database_path)
+            database.execute("CREATE TABLE values_table (value TEXT)")
+            database.execute("INSERT INTO values_table VALUES ('catalogued')")
+            database.commit()
+            original_copy = workspace_snapshot._copy_stable_file
+            committed = False
+
+            def commit_before_database_capture(path, destination, expected):
+                nonlocal committed
+                result = original_copy(path, destination, expected)
+                if path.name == "a-first" and not committed:
+                    database.execute("INSERT INTO values_table VALUES ('updated before capture')")
+                    database.commit()
+                    committed = True
+                return result
+
+            try:
+                with patch.object(
+                    workspace_snapshot,
+                    "_copy_stable_file",
+                    side_effect=commit_before_database_capture,
+                ):
+                    status = backup_job.backup(home, backups, kind="workspace")
+            finally:
+                database.close()
+
+            restored = base / "restored"
+            restore(
+                backups / status["archive"],
+                restored,
+                sha256=status["sha256"],
+            )
+            with closing(sqlite3.connect(restored / "z-database")) as copy:
+                self.assertEqual(
+                    copy.execute("SELECT value FROM values_table").fetchall(),
+                    [("catalogued",), ("updated before capture",)],
+                )
+
     def test_file_change_during_its_own_capture_retries_and_publishes_new_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory).resolve()
