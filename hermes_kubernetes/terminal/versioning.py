@@ -377,6 +377,12 @@ def reconcile(root, runtime):
         else:
             atomic(path, base64.b64decode(item["data"]), item["mode"])
     atomic(state, dump({k: v for k, v in baseline.items() if v is not None}))
+    terminal_config = root / "config.yaml"
+    if terminal_config.is_file():
+        try:
+            terminal_config.chmod(0o444)
+        except OSError:
+            pass
     (root / ".local/versioning/conflicts.json").unlink(missing_ok=True)
     result = {
         "status": "synchronized",
