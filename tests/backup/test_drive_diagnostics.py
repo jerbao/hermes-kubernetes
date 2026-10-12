@@ -1,6 +1,11 @@
+import errno
+import json
+from pathlib import Path
+import tempfile
 import unittest
+from unittest.mock import patch
 
-from hermes_kubernetes.backup.drive import RemoteError, safe_failure_reason
+from hermes_kubernetes.backup.drive import Remote, RemoteError, safe_failure_reason
 
 
 class BackupFailureDiagnosticsTests(unittest.TestCase):
@@ -35,9 +40,7 @@ class BackupFailureDiagnosticsTests(unittest.TestCase):
 
     def test_file_exists_failures_use_safe_specific_or_generic_codes(self):
         self.assertEqual(
-            safe_failure_reason(
-                FileExistsError("Never overwrite an existing remote snapshot")
-            ),
+            safe_failure_reason(FileExistsError("Never overwrite an existing remote snapshot")),
             "remote_snapshot_already_exists",
         )
         self.assertEqual(
@@ -56,6 +59,46 @@ class BackupFailureDiagnosticsTests(unittest.TestCase):
             safe_failure_reason(RuntimeError("Remote backup path already exists")),
             "remote_backup_path_already_exists",
         )
+
+    def test_failure_context_names_only_the_project_frame(self):
+        with tempfile.TemporaryDirectory(prefix="private-path-") as temporary:
+            archive = Path(temporary) / ("hermes-workspace-20261012T093024Z-012345abcdef.tar.gz")
+            archive.write_bytes(b"fixture")
+            remote = object.__new__(Remote)
+            remote.remote = "hermes-backup:"
+
+            def run(command, *args, **kwargs):
+                if command == "lsjson":
+                    return json.dumps(
+                        [{"Name": archive.name.removesuffix(".tar.gz"), "IsDir": True}]
+                    )
+                return ""
+
+            remote.run = run
+            with patch(
+                "hermes_kubernetes.backup.drive.verify_archive",
+                return_value={"consistency": "stable-files-and-sqlite-per-database"},
+            ):
+                try:
+                    remote._upload(archive, "workspace", keep=6, kind="workspace")
+                except FileExistsError as error:
+                    reason = safe_failure_reason(error)
+                else:
+                    self.fail("the duplicate snapshot fixture did not raise")
+
+        self.assertIn(
+            "remote_snapshot_already_exists@hermes_kubernetes/backup/drive.py:_upload:", reason
+        )
+        self.assertNotIn("private-path-", reason)
+
+    def test_os_error_reports_errno_without_path_or_message(self):
+        try:
+            raise FileExistsError(errno.EEXIST, "private path", "/secret/profile")
+        except FileExistsError as error:
+            reason = safe_failure_reason(error)
+        self.assertEqual(reason, "backup_path_already_exists:errno_17")
+        self.assertNotIn("/secret", reason)
+        self.assertNotIn("private path", reason)
 
     def test_unrecognized_exception_text_is_never_emitted(self):
         error = RuntimeError("secret path and credential must stay private")

@@ -17,6 +17,7 @@ import subprocess
 import tarfile
 import tempfile
 import time
+import traceback
 
 from hermes_kubernetes.backup.archive import (
     BACKUP_NAME,
@@ -54,10 +55,24 @@ _SAFE_FAILURE_CODES = {
 def safe_failure_reason(error):
     """Return a bounded diagnostic code without exposing arbitrary exception text."""
     if isinstance(error, RemoteError):
-        return f"rclone_{error.command}_exit_{error.returncode}"
-    if isinstance(error, FileExistsError):
-        return _SAFE_FAILURE_CODES.get(str(error), "backup_path_already_exists")
-    return _SAFE_FAILURE_CODES.get(str(error), type(error).__name__)
+        reason = f"rclone_{error.command}_exit_{error.returncode}"
+    elif isinstance(error, FileExistsError):
+        reason = _SAFE_FAILURE_CODES.get(str(error), "backup_path_already_exists")
+    else:
+        reason = _SAFE_FAILURE_CODES.get(str(error), type(error).__name__)
+
+    root = Path(__file__).resolve().parents[2]
+    for frame in reversed(traceback.extract_tb(error.__traceback__)):
+        try:
+            source = Path(frame.filename).resolve().relative_to(root)
+        except ValueError:
+            continue
+        if source.parts and source.parts[0] == "hermes_kubernetes":
+            reason += f"@{source.as_posix()}:{frame.name}:{frame.lineno}"
+            break
+    if isinstance(error, OSError) and error.errno is not None:
+        reason += f":errno_{error.errno}"
+    return reason
 
 
 class Remote:
