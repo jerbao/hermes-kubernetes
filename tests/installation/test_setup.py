@@ -1,6 +1,7 @@
 """Exercise configuration, isolation, credential transport and offline Git bootstrap."""
 
 import json
+import os
 import shutil
 from pathlib import Path
 import subprocess
@@ -28,6 +29,21 @@ class InstallationTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
+        if (
+            self._testMethodName
+            == "test_offline_terminal_preserves_git_history_native_data_and_fast_forwards"
+        ):
+            count = int(os.environ.get("GIT_CONFIG_COUNT", "0"))
+            git_config = {
+                "GIT_CONFIG_COUNT": str(count + 2),
+                f"GIT_CONFIG_KEY_{count}": "maintenance.auto",
+                f"GIT_CONFIG_VALUE_{count}": "false",
+                f"GIT_CONFIG_KEY_{count + 1}": "gc.auto",
+                f"GIT_CONFIG_VALUE_{count + 1}": "0",
+            }
+            self.git_config_patch = patch.dict(os.environ, git_config)
+            self.git_config_patch.start()
+            self.addCleanup(self.git_config_patch.stop)
         self.root = Path(self.temp.name).resolve() / "instance"
         create(self.root, manifest("v0.2.0"))
 
@@ -264,8 +280,11 @@ class InstallationTest(unittest.TestCase):
 
         def receive():
             with bundle.open("rb") as stream:
+                # Disable detached Git maintenance during this fixture.
                 return subprocess.run(
-                    [sys.executable, "-c", RECEIVE, str(target)], stdin=stream, capture_output=True
+                    [sys.executable, "-c", RECEIVE, str(target)],
+                    stdin=stream,
+                    capture_output=True,
                 )
 
         self.assertEqual(receive().returncode, 0)
