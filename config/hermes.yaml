@@ -1,4 +1,9 @@
 # Initial preferences for a fresh PVC. Subsequent preferences live in the PVC.
+#
+# NOTE: This file documents initial runtime defaults. On an SSH terminal,
+# ~/.hermes/config.yaml is a read-only projection, NOT the active runtime configuration.
+# Do not edit it directly. Use `python3 hermes.py runtime exec -- hermes config set ...`
+# or the native Desktop/API to update configuration in the active pod.
 model:
   provider: custom
   default: default

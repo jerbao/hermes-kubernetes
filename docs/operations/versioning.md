@@ -15,6 +15,13 @@ current or failed state. `python3 hermes.py sync --publish` runs reconciliation
 and publication immediately and prints a JSON result. Never infer that a local
 projection is live just because the file was edited.
 
+The SSH terminal's `~/.hermes/config.yaml` is not the active pod configuration.
+Do not edit it to change runtime settings. If a file tool refuses a write because
+a path is outside its safe root, stop; do not retry with shell or Python. Use the
+native Desktop/API or `python3 hermes.py runtime exec -- hermes --profile PROFILE config set ...`
+for live runtime changes. The safe root is a boundary, not an obstacle to work around.
+
+
 SQLite/WAL/SHM, OAuth sessions, .env, credentials and dependency directories are
 never committed. Credential references in sanitized projections are resolved
 from a private PVC vault. Git and images do not replace durable-state backups.
