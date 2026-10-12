@@ -71,11 +71,13 @@ def retained(name):
     )
 
 
-def digest(path):
+def digest(path, progress=None):
     checksum = hashlib.sha256()
     with open_read(path) as stream:
         while chunk := stream.read(65536):
             checksum.update(chunk)
+            if progress is not None:
+                progress.bytes_read(len(chunk))
     return checksum.hexdigest()
 
 

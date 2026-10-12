@@ -29,7 +29,9 @@ SNAPSHOT_RETRY_DELAY_SECONDS = 1
 ARCHIVE_NAME_ATTEMPTS = 4
 
 
-def backup(source, directory, keep=6, *, kind="state", policy=None, workspace_lock=None):
+def backup(
+    source, directory, keep=6, *, kind="state", policy=None, workspace_lock=None, progress=None
+):
     source, directory = Path(source).resolve(), Path(directory).absolute()
     if kind not in {"state", "workspace"} or keep < 1 or not source.is_dir():
         raise ValueError("Expected a source directory and positive retention")
@@ -63,8 +65,10 @@ def backup(source, directory, keep=6, *, kind="state", policy=None, workspace_lo
                     build_snapshot as build_workspace,
                 )
 
-                build = partial(build_workspace, source, archive, policy=policy)
+                build = partial(build_workspace, source, archive, policy=policy, progress=progress)
             else:
+                if progress is not None:
+                    progress.phase("capture")
                 build = partial(build_snapshot, source, archive)
             for attempt in range(SNAPSHOT_ATTEMPTS):
                 try:
@@ -74,15 +78,21 @@ def backup(source, directory, keep=6, *, kind="state", policy=None, workspace_lo
                     if attempt + 1 == SNAPSHOT_ATTEMPTS:
                         raise
                     time.sleep(SNAPSHOT_RETRY_DELAY_SECONDS)
-            verification = verify_archive(archive)
+            if progress is not None:
+                progress.phase("local_verify", reset_counters=True)
+            verification = verify_archive(archive, progress=progress)
+            if progress is not None:
+                progress.emit("phase_complete")
             status = {
                 "archive": name,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
-                "sha256": digest(archive),
+                "sha256": digest(archive, progress=progress),
                 "size": archive.stat().st_size,
                 **verification,
             }
             publish_name = name
+            if progress is not None:
+                progress.phase("local_publish")
             for attempt in range(ARCHIVE_NAME_ATTEMPTS):
                 try:
                     os.link(archive, directory / publish_name)
@@ -98,6 +108,8 @@ def backup(source, directory, keep=6, *, kind="state", policy=None, workspace_lo
             os.fsync(handle.fileno())
             temporary_status = Path(handle.name)
         temporary_status.replace(directory / "latest.json")
+        if progress is not None:
+            progress.phase("local_retention")
         retain_backups(directory, keep, kind=kind)
         return status
 

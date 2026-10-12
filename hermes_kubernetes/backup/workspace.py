@@ -35,7 +35,7 @@ BROWSER_LOCKS = {
 FILE_SPOOL_MEMORY_LIMIT = 8 * 1024 * 1024
 
 
-def catalogue(home, policy=None):
+def catalogue(home, policy=None, progress=None):
     entries, skipped = {}, 0
 
     def visit(parent):
@@ -69,6 +69,8 @@ def catalogue(home, policy=None):
             ):
                 raise ValueError("Workspace contains an unsupported special file")
             entries[relative] = details
+            if progress is not None:
+                progress.scanned_entry()
             if stat.S_ISDIR(details.st_mode):
                 visit(path)
 
@@ -115,13 +117,15 @@ def _read_chunk(stream):
     return stream.read(1024 * 1024)
 
 
-def _copy_chunks(reader, writer):
+def _copy_chunks(reader, writer, progress=None):
     checksum = hashlib.sha256()
     size = 0
     while chunk := _read_chunk(reader):
         writer.write(chunk)
         checksum.update(chunk)
         size += len(chunk)
+        if progress is not None:
+            progress.bytes_read(len(chunk))
     return size, checksum.hexdigest()
 
 
@@ -139,7 +143,7 @@ def _stat_version(path, expected):
     return current
 
 
-def _copy_stable_file(path, destination, expected):
+def _copy_stable_file(path, destination, expected, progress=None):
     """Spool one regular file from a single descriptor and reject mid-read changes."""
     flags = (
         os.O_RDONLY
@@ -168,7 +172,7 @@ def _copy_stable_file(path, destination, expected):
                     or version(_stat_version(path, opened)) != version(opened)
                 ):
                     raise _retry_path_change()
-                size, checksum = _copy_chunks(reader, writer)
+                size, checksum = _copy_chunks(reader, writer, progress)
                 writer.flush()
                 finished = os.fstat(reader.fileno())
                 if version(finished) != version(opened) or version(
@@ -183,7 +187,13 @@ def _copy_stable_file(path, destination, expected):
 
 
 @contextmanager
-def _spool_stable_file(path, expected, spill_directory, memory_limit=FILE_SPOOL_MEMORY_LIMIT):
+def _spool_stable_file(
+    path,
+    expected,
+    spill_directory,
+    memory_limit=FILE_SPOOL_MEMORY_LIMIT,
+    progress=None,
+):
     """Capture a stable regular file without a network-filesystem round trip for small files."""
     flags = (
         os.O_RDONLY
@@ -226,6 +236,8 @@ def _spool_stable_file(path, expected, spill_directory, memory_limit=FILE_SPOOL_
                 spool.write(chunk)
                 checksum.update(chunk)
                 size += len(chunk)
+                if progress is not None:
+                    progress.bytes_read(len(chunk))
             spool.flush()
             finished = os.fstat(reader.fileno())
             if version(finished) != version(opened) or version(
@@ -238,7 +250,7 @@ def _spool_stable_file(path, expected, spill_directory, memory_limit=FILE_SPOOL_
         spool.close()
 
 
-def _capture_sqlite_sources(home, name, expected_database, staging):
+def _capture_sqlite_sources(home, name, expected_database, staging, progress=None):
     """Copy and verify a database plus its required recovery files as one unit."""
     recovery_names = [name + suffix for suffix in ("-wal", "-journal")]
     sources = {name: expected_database}
@@ -257,10 +269,10 @@ def _capture_sqlite_sources(home, name, expected_database, staging):
 
     private = Path(staging) / "source.sqlite3"
     try:
-        _copy_stable_file(home / name, private, sources[name])
+        _copy_stable_file(home / name, private, sources[name], progress)
         for sidecar in source_names[1:]:
             target = Path(str(private) + sidecar.removeprefix(name))
-            _copy_stable_file(home / sidecar, target, sources[sidecar])
+            _copy_stable_file(home / sidecar, target, sources[sidecar], progress)
         # Changes between the database and sidecar copies invalidate the pair.
         for source_name in source_names:
             _stat_version(home / source_name, sources[source_name])
@@ -301,14 +313,18 @@ def preview(home, policy):
     }
 
 
-def build_snapshot(home, output, *, policy=None):
+def build_snapshot(home, output, *, policy=None, progress=None):
     home, output = Path(home).resolve(), Path(output).absolute()
     if not home.is_dir() or output.resolve().is_relative_to(home):
         raise ValueError("Expected a home and output outside that home")
     if output.exists() or output.is_symlink():
         raise FileExistsError("Snapshot output already exists")
     policy = normalize(policy) if policy is not None else None
-    before, skipped = catalogue(home, policy)
+    if progress is not None:
+        progress.phase("scan")
+    before, skipped = catalogue(home, policy, progress=progress)
+    if progress is not None:
+        progress.scan_complete(len(before))
     if policy is not None and not review(home, before, policy)["ready"]:
         raise ValueError("Workspace selection needs review; inspect the private dry-run report")
     if MANIFEST in before:
@@ -331,6 +347,12 @@ def build_snapshot(home, output, *, policy=None):
         if (path.exists() or path.is_symlink()) and name not in before:
             raise ValueError("Workspace selection omitted SQLite recovery data")
     started = datetime.now(timezone.utc).isoformat()
+    if progress is not None:
+        captured_names = set(before) - sidecars
+        progress.start_capture(
+            len(captured_names),
+            sum(stat.S_ISREG(before[name].st_mode) for name in captured_names),
+        )
     descriptor, temporary_name = tempfile.mkstemp(prefix=".hermes-workspace-", dir=output.parent)
     temporary_archive = Path(temporary_name)
     entries = []
@@ -368,6 +390,8 @@ def build_snapshot(home, output, *, policy=None):
                     info.type = tarfile.DIRTYPE
                     archive.addfile(info)
                     entries.append(record(info))
+                    if progress is not None:
+                        progress.entry_processed()
                 elif stat.S_ISLNK(capture_details.st_mode):
                     try:
                         target = os.readlink(path)
@@ -381,11 +405,15 @@ def build_snapshot(home, output, *, policy=None):
                     info.type, info.linkname = tarfile.SYMTYPE, target
                     archive.addfile(info)
                     entries.append(record(info))
+                    if progress is not None:
+                        progress.entry_processed()
                 else:
                     if info.mode & 0o6000:
                         raise ValueError("Workspace contains a privileged executable mode")
                     if name in databases:
-                        source = _capture_sqlite_sources(home, name, capture_details, staging)
+                        source = _capture_sqlite_sources(
+                            home, name, capture_details, staging, progress
+                        )
                         try:
                             info.size = source.stat().st_size
                             checksum = digest(source)
@@ -394,13 +422,18 @@ def build_snapshot(home, output, *, policy=None):
                         finally:
                             source.unlink(missing_ok=True)
                     else:
-                        with _spool_stable_file(path, capture_details, staging) as (
+                        with _spool_stable_file(
+                            path, capture_details, staging, progress=progress
+                        ) as (
                             reader,
                             info.size,
                             checksum,
                         ):
                             archive.addfile(info, reader)
                     entries.append(record(info, checksum=checksum, sqlite=name in databases))
+                    if progress is not None:
+                        progress.file_processed()
+                        progress.entry_processed()
             manifest = {
                 "schema": 2,
                 "kind": "workspace",

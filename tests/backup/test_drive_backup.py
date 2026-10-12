@@ -1,5 +1,6 @@
 import configparser
 from contextlib import closing
+from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ from unittest.mock import patch
 
 from hermes_kubernetes.backup.job import backup
 from hermes_kubernetes.backup.drive import Remote, restore_state
+from hermes_kubernetes.backup.progress import ProgressReporter
 from hermes_kubernetes.backup.restore import restore
 
 RCLONE = os.environ.get("HERMES_RCLONE", shutil.which("rclone"))
@@ -62,7 +64,22 @@ class EncryptedBackupTests(unittest.TestCase):
     def test_encrypted_roundtrip_preserves_wal_and_rejects_overwrite(self):
         archive = self.archive()
         original = self.config.read_bytes()
-        status = self.remote.upload(archive, "state")
+        output = StringIO()
+        progress = ProgressReporter(stream=output)
+        status = self.remote.upload(archive, "state", progress=progress)
+        progress.finish()
+        progress.close()
+        phases = [json.loads(line)["phase"] for line in output.getvalue().splitlines()]
+        for phase in [
+            "upload_preflight_verify",
+            "remote_preflight",
+            "upload",
+            "download_verify",
+            "receipt",
+            "retention",
+            "done",
+        ]:
+            self.assertIn(phase, phases)
         self.assertEqual(self.config.read_bytes(), original)
         self.assertEqual(self.remote.config.stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.remote.list("state"), [status])

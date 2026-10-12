@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import threading
 import time
 import traceback
 
@@ -27,9 +28,11 @@ from hermes_kubernetes.backup.archive import (
 )
 from hermes_kubernetes.backup.state import MANIFEST, digest
 from hermes_kubernetes.backup.cache import bounded_cache
+from hermes_kubernetes.backup.progress import ProgressReporter
 
 COLLECTION = re.compile(r"[a-z][a-z0-9-]{0,47}")
 SNAPSHOT = re.compile(r"hermes-(state|workspace)-\d{8}T\d{6}Z-[0-9a-f]{12}")
+_PROGRESS = None
 
 
 class RemoteError(RuntimeError):
@@ -112,25 +115,55 @@ class Remote:
             safe_name(suffix)
         return self.remote + collection + ("/" + suffix if suffix else "")
 
-    def run(self, command, *args, missing_ok=False):
+    def run(self, command, *args, missing_ok=False, progress=None):
+        invocation = [
+            self.rclone,
+            "--config",
+            str(self.config),
+            "--log-level",
+            "NOTICE" if command == "copyto" and progress is not None else "ERROR",
+            "--retries",
+            "3",
+            "--low-level-retries",
+            "5",
+            "--contimeout",
+            "30s",
+            "--timeout",
+            "5m",
+        ]
+        if command == "copyto" and progress is not None:
+            invocation.extend(["--stats", "30s", "--stats-one-line", "--stats-log-level", "NOTICE"])
+        invocation.extend([command, *map(str, args)])
+        if command == "copyto" and progress is not None:
+            process = subprocess.Popen(
+                invocation, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+            )
+            diagnostics = bytearray()
+
+            def read_progress():
+                for line in process.stderr:
+                    if len(diagnostics) < 65536:
+                        diagnostics.extend(line[: 65536 - len(diagnostics)])
+                    progress.transfer_stats(line.decode("utf-8", errors="replace"))
+
+            reader = threading.Thread(target=read_progress, daemon=True)
+            reader.start()
+            try:
+                returncode = process.wait(timeout=3600)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+                reader.join(timeout=1)
+                process.stderr.close()
+                raise
+            reader.join(timeout=1)
+            process.stderr.close()
+            if returncode:
+                raise RemoteError(command, returncode, bytes(diagnostics))
+            return b""
+
         result = subprocess.run(
-            [
-                self.rclone,
-                "--config",
-                str(self.config),
-                "--log-level",
-                "ERROR",
-                "--retries",
-                "3",
-                "--low-level-retries",
-                "5",
-                "--contimeout",
-                "30s",
-                "--timeout",
-                "5m",
-                command,
-                *map(str, args),
-            ],
+            invocation,
             capture_output=True,
             timeout=3600,
         )
@@ -197,7 +230,7 @@ class Remote:
                     completed.append(value)
         return sorted(completed, key=lambda s: (s["completed_at"], s["snapshot"]), reverse=True)
 
-    def upload(self, archive, collection, *, keep=6):
+    def upload(self, archive, collection, *, keep=6, progress=None):
         archive = Path(archive).resolve()
         if keep < 1:
             raise ValueError("Retain at least one completed backup")
@@ -208,10 +241,12 @@ class Remote:
         else:
             raise ValueError("Expected a recognized verified backup archive")
         with bounded_cache(archive):
-            return self._upload(archive, collection, keep=keep, kind=kind)
+            return self._upload(archive, collection, keep=keep, kind=kind, progress=progress)
 
-    def _upload(self, archive, collection, *, keep, kind):
-        verification = verify_archive(archive)
+    def _upload(self, archive, collection, *, keep, kind, progress=None):
+        if progress is not None:
+            progress.phase("upload_preflight_verify", reset_counters=True)
+        verification = verify_archive(archive, progress=progress)
         expected_consistency = {
             "state": "sqlite-per-database",
             "workspace": "stable-files-and-sqlite-per-database",
@@ -219,6 +254,8 @@ class Remote:
         if verification["consistency"] != expected_consistency:
             raise ValueError("Archive kind does not match its contents")
         snapshot = archive.name.removesuffix(".tar.gz")
+        if progress is not None:
+            progress.phase("remote_preflight")
         self.run("mkdir", self.path(collection))
         names = json.loads(
             self.run("lsjson", self.path(collection), "--dirs-only", "--max-depth", "1")
@@ -231,12 +268,16 @@ class Remote:
             "collection": collection,
             "kind": kind,
             "archive": archive.name,
-            "sha256": digest(archive),
+            "sha256": digest(archive, progress=progress),
             "size": archive.stat().st_size,
             **verification,
         }
         target = self.path(collection, snapshot + "/archive.tar.gz")
-        self.run("copyto", archive, target, "--immutable")
+        if progress is not None:
+            progress.phase("upload")
+        self.run("copyto", archive, target, "--immutable", progress=progress)
+        if progress is not None:
+            progress.phase("download_verify", reset_counters=True)
         with (
             tempfile.TemporaryDirectory(
                 prefix=".drive-verification-", dir=archive.parent
@@ -244,12 +285,12 @@ class Remote:
             bounded_cache(temporary),
         ):
             downloaded = Path(temporary) / "archive.tar.gz"
-            self.run("copyto", target, downloaded)
+            self.run("copyto", target, downloaded, progress=progress)
             downloaded.chmod(0o600)
             if (
                 downloaded.stat().st_size != status["size"]
-                or digest(downloaded) != status["sha256"]
-                or digest(archive) != status["sha256"]
+                or digest(downloaded, progress=progress) != status["sha256"]
+                or digest(archive, progress=progress) != status["sha256"]
             ):
                 raise ValueError("Remote round-trip or local archive changed")
             status["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -258,16 +299,21 @@ class Remote:
                 os.open(receipt, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
             ) as output:
                 json.dump(status, output)
+            if progress is not None:
+                progress.phase("receipt")
             self.run(
                 "copyto",
                 receipt,
                 self.path(collection, snapshot + "/receipt.json"),
                 "--immutable",
+                progress=progress,
             )
         if self.receipt(collection, snapshot, wait=True) != status:
             raise ValueError("Remote completion receipt failed verification")
         # Retention runs only after the new encrypted archive was downloaded,
         # decrypted, checked and committed. Never sync or purge the Drive root.
+        if progress is not None:
+            progress.phase("retention")
         for previous in self.list(collection)[keep:]:
             prefix = previous["snapshot"]
             self.run("deletefile", self.path(collection, prefix + "/archive.tar.gz"))
@@ -357,6 +403,7 @@ def restore_state(archive, destination, *, sha256):
 
 
 def main():
+    global _PROGRESS
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--config",
@@ -390,6 +437,8 @@ def main():
         if command == "restore":
             sub.add_argument("--staging-directory", type=Path, required=True)
     args = parser.parse_args()
+    progress = ProgressReporter() if args.command == "backup" else None
+    _PROGRESS = progress
     with Remote(args.config, remote=args.remote, rclone=args.rclone) as remote:
         if args.command == "backup":
             from hermes_kubernetes.backup.job import backup
@@ -408,12 +457,16 @@ def main():
                         if args.kind == "workspace"
                         else None
                     ),
+                    progress=progress,
                 )
             except FileExistsError:
                 raise RuntimeError("Local backup path already exists") from None
             try:
                 result = remote.upload(
-                    args.directory / status["archive"], args.collection, keep=args.keep
+                    args.directory / status["archive"],
+                    args.collection,
+                    keep=args.keep,
+                    progress=progress,
                 )
             except FileExistsError:
                 raise RuntimeError("Remote backup path already exists") from None
@@ -439,11 +492,18 @@ def main():
                     **status,
                     "restored": restore(archive, args.destination, sha256=status["sha256"]),
                 }
-        print(json.dumps(result))
+        if progress is not None:
+            progress.finish()
+            progress.close()
+        print(json.dumps(result), flush=True)
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as error:
-        raise SystemExit("Encrypted backup failed: " + safe_failure_reason(error))
+        reason = safe_failure_reason(error)
+        if _PROGRESS is not None:
+            _PROGRESS.failure(reason)
+            _PROGRESS.close()
+        raise SystemExit("Encrypted backup failed: " + reason)

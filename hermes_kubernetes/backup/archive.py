@@ -30,7 +30,7 @@ def safe_name(value):
     return name
 
 
-def verify_archive(path, *, staging_directory=None):
+def verify_archive(path, *, staging_directory=None, progress=None):
     observed, tree, manifest = {}, {}, None
     with (
         tempfile.TemporaryDirectory(
@@ -64,8 +64,12 @@ def verify_archive(path, *, staging_directory=None):
                 if not entry.linkname or "\x00" in entry.linkname:
                     raise ValueError("Invalid symlink target")
                 details["target"] = entry.linkname
+                if progress is not None:
+                    progress.entry_processed()
                 continue
             if entry.isdir():
+                if progress is not None:
+                    progress.entry_processed()
                 continue
             checksum = hashlib.sha256()
             reader = archive.extractfile(entry)
@@ -77,6 +81,8 @@ def verify_archive(path, *, staging_directory=None):
                 chunk = first
                 while chunk:
                     checksum.update(chunk)
+                    if progress is not None:
+                        progress.bytes_read(len(chunk))
                     if database_stream:
                         database_stream.write(chunk)
                     chunk = reader.read(65536)
@@ -101,6 +107,9 @@ def verify_archive(path, *, staging_directory=None):
                 "sqlite": is_sqlite,
             }
             details.update({k: v for k, v in observed[entry.name].items() if k != "path"})
+            if progress is not None:
+                progress.file_processed()
+                progress.entry_processed()
     if not manifest:
         raise ValueError("Missing or unsupported snapshot manifest")
     if manifest.get("schema") == 1 and manifest.get("consistency") == "sqlite-per-database":

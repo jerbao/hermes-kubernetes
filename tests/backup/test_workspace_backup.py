@@ -11,15 +11,49 @@ import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+from io import StringIO
 
 import hermes_kubernetes.backup.archive as backup_archive
 import hermes_kubernetes.backup.job as backup_job
 from hermes_kubernetes.backup.restore import restore
 from hermes_kubernetes.backup.state import MANIFEST, digest
 import hermes_kubernetes.backup.workspace as workspace_snapshot
+from hermes_kubernetes.backup.progress import ProgressReporter
 
 
 class WorkspaceBackupTests(unittest.TestCase):
+    def test_backup_progress_reports_workspace_phases_and_aggregate_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            home, backups = base / "home", base / "backups"
+            home.mkdir()
+            (home / "one").write_bytes(b"one")
+            (home / "two").write_bytes(b"two-two")
+            output = StringIO()
+            progress = ProgressReporter(stream=output)
+            backup_job.backup(home, backups, kind="workspace", progress=progress)
+            progress.close()
+
+            events = [json.loads(line) for line in output.getvalue().splitlines()]
+            phases = [event["phase"] for event in events]
+            for phase in [
+                "scan",
+                "capture",
+                "local_verify",
+                "local_publish",
+                "local_retention",
+            ]:
+                self.assertIn(phase, phases)
+            capture = next(event for event in events if event["phase"] == "capture")
+            self.assertEqual(capture["entries_total"], 2)
+            self.assertEqual(capture["files_total"], 2)
+            self.assertTrue(
+                any(
+                    event["phase"] == "local_verify" and event["files_processed"] == 2
+                    for event in events
+                )
+            )
+
     def test_regular_files_use_bounded_memory_then_spill_to_snapshot_storage(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory).resolve()
@@ -177,9 +211,9 @@ class WorkspaceBackupTests(unittest.TestCase):
             changed = False
 
             @contextmanager
-            def change_first_after_second(path, expected, staging):
+            def change_first_after_second(path, expected, staging, progress=None):
                 nonlocal changed
-                with original_copy(path, expected, staging) as captured:
+                with original_copy(path, expected, staging, progress=progress) as captured:
                     yield captured
                 if path.name == "second" and not changed:
                     (home / "first").write_text("changed after first was spooled")
@@ -214,7 +248,7 @@ class WorkspaceBackupTests(unittest.TestCase):
             changed = False
             catalogues = 0
 
-            def update_after_inventory(directory, policy=None):
+            def update_after_inventory(directory, policy=None, progress=None):
                 nonlocal changed, catalogues
                 entries = original_catalogue(directory, policy)
                 catalogues += 1
@@ -254,9 +288,9 @@ class WorkspaceBackupTests(unittest.TestCase):
             committed = False
 
             @contextmanager
-            def commit_before_database_capture(path, expected, staging):
+            def commit_before_database_capture(path, expected, staging, progress=None):
                 nonlocal committed
-                with original_copy(path, expected, staging) as captured:
+                with original_copy(path, expected, staging, progress=progress) as captured:
                     yield captured
                 if path.name == "a-first" and not committed:
                     database.execute("INSERT INTO values_table VALUES ('updated before capture')")
