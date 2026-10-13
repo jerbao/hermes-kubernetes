@@ -12,9 +12,9 @@ from hermes_kubernetes.runtime.write_roots import ROOT_VARIABLE, apply, roots
 
 
 class WriteRootsTests(unittest.TestCase):
-    def test_roots_accepts_absolute_paths_without_reordering(self):
-        # Cobre: lista válida + falha se reordenar ou confundir .ssh com um prefixo.
-        configured = ["/home/u/code-repos", "/opt/work", "/home/u/.ssh-backup"]
+    def test_roots_accepts_home_subfolders_without_reordering(self):
+        # Cobre: subpastas de home + falha se reordenar ou recusar /root e caminhos aninhados.
+        configured = ["/home/u/code-repos", "/home/u/notes/a", "/root/work"]
 
         self.assertEqual(roots({"write_roots": configured}), configured)
 
@@ -26,31 +26,42 @@ class WriteRootsTests(unittest.TestCase):
 
     def test_roots_rejects_non_lists(self):
         # Cobre: tipo inválido + falha se aceitar string, objeto ou tupla como lista.
-        for configured in (None, "/opt/work", {}, ("/opt/work",), 42):
+        for configured in (None, "/home/u/code-repos", {}, ("/home/u/code-repos",), 42):
             with self.subTest(configured=configured), self.assertRaises(ValueError):
                 roots({"write_roots": configured})
 
     def test_roots_rejects_unsafe_or_non_string_entries(self):
-        # Cobre: validação de cada entrada + falha se permitir traversal ou credenciais.
+        # Cobre: cada entrada + falha se aceitar homes, dot folders, traversal ou raízes externas.
         for root in (
             "",
             "relative/path",
             "/",
+            "/home/u",
+            "/root",
+            "/home/u/work:/home/u",
+            "/root/work:/root",
+            "/home",
+            "/home/u/.ssh-backup",
+            "/home/u/.config/gh",
+            "/home/u/.hermes",
+            "/opt/work",
+            "/srv/x",
             "..",
             "/home/u/../other",
             "/.ssh",
             "/home/u/.ssh",
             "/home/u/.ssh/id_ed25519",
+            "/home/u/code-repos/.ssh",
             "/home/.ssh/u",
             None,
             42,
-            Path("/opt/work"),
+            Path("/home/u/code-repos"),
         ):
             with self.subTest(root=root), self.assertRaises(ValueError):
-                roots({"write_roots": ["/opt/work", root]})
+                roots({"write_roots": ["/home/u/code-repos", root]})
 
     def test_apply_appends_once_and_preserves_order(self):
-        # Cobre: merge/idempotência + falha se duplicar, ordenar ou perder raízes atuais.
+        # Cobre: merge/idempotência + falha se revalidar raízes atuais, duplicar ou reordenar.
         for current, extra, expected in (
             (["/opt/data"], ["/home/u/code-repos"], ["/opt/data", "/home/u/code-repos"]),
             (
@@ -60,7 +71,7 @@ class WriteRootsTests(unittest.TestCase):
             ),
             (
                 ["/opt/cache", "/opt/data", "/opt/cache"],
-                ["/home/u/code-repos", "/opt/data", "/home/u/other", "/home/u/code-repos"],
+                ["/home/u/code-repos", "/home/u/other", "/home/u/code-repos"],
                 ["/opt/cache", "/opt/data", "/home/u/code-repos", "/home/u/other"],
             ),
         ):
@@ -121,8 +132,11 @@ class WriteRootsTests(unittest.TestCase):
                 ["/home/u/../other"],
                 ["/home/u/.ssh"],
                 ["/home/u/.ssh/id_ed25519"],
+                ["/home/u/work:/home/u"],
+                ["/root/work:/root"],
                 [42],
                 ["/home/u/code-repos", "/home/u/.ssh"],
+                ["/home/u/code-repos", "/opt/data"],
             )
         ]
         for content in contents:

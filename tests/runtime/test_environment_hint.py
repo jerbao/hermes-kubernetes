@@ -27,25 +27,31 @@ class EnvironmentHintTests(unittest.TestCase):
             "report it and ask where the file should go",
             "instead of retrying through the terminal or another tool",
             "No isolated MCP executor is configured",
+            "Credentials (~/.ssh, ~/.config/gh) change only through their own commands "
+            "in the terminal, such as `gh auth login --web` or `ssh-keygen`, "
+            "and only when the user asks.",
         ):
             with self.subTest(text=text):
                 self.assertIn(text, hint)
 
     def test_build_lists_terminal_write_roots_in_configured_order(self):
-        # Cobre: write_roots configuradas + falha se omitir pastas ou orientar bypass.
+        # Cobre: write_roots configuradas + falha se omitir pastas/credenciais ou orientar bypass.
         hint = build(
-            {"write_roots": ["/home/u/code-repos", "/opt/work"]},
+            {"write_roots": ["/home/u/code-repos", "/home/u/notes"]},
             Path("/state"),
         )
 
         self.assertEqual(
             hint.splitlines()[-1],
             "- File tools (write_file, patch) may write only under /state "
-            "and these terminal folders: /home/u/code-repos, /opt/work. "
+            "and these terminal folders: /home/u/code-repos, /home/u/notes. "
             "A write outside them is denied by HERMES_WRITE_SAFE_ROOT: report it and "
             "ask where the file should go instead of retrying through the terminal "
-            "or another tool.",
+            "or another tool. Credentials (~/.ssh, ~/.config/gh) change only through their "
+            "own commands in the terminal, such as `gh auth login --web` or `ssh-keygen`, "
+            "and only when the user asks.",
         )
+        self.assertIn("Credentials (~/.ssh, ~/.config/gh)", hint)
 
     def test_build_lists_only_configured_executors_and_workspace_roots(self):
         # Cobre: MCP configurado + falha se omitir roles/raiz ou inventar codegraph.
@@ -100,7 +106,9 @@ class EnvironmentHintTests(unittest.TestCase):
                     "- File tools (write_file, patch) may write only under /state. "
                     "A write outside them is denied by HERMES_WRITE_SAFE_ROOT: report it and "
                     "ask where the file should go instead of retrying through the terminal "
-                    "or another tool.",
+                    "or another tool. Credentials (~/.ssh, ~/.config/gh) change only through their "
+                    "own commands in the terminal, such as `gh auth login --web` or `ssh-keygen`, "
+                    "and only when the user asks.",
                 )
 
     def test_apply_exports_when_absent_or_blank(self):

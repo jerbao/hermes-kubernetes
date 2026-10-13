@@ -50,7 +50,9 @@ def build(instance, home):
         f"- File tools (write_file, patch) may write only under {home}"
         + (f" and these terminal folders: {', '.join(write_roots)}." if write_roots else ".")
         + " A write outside them is denied by HERMES_WRITE_SAFE_ROOT: report it and ask where the "
-        "file should go instead of retrying through the terminal or another tool."
+        "file should go instead of retrying through the terminal or another tool. Credentials "
+        "(~/.ssh, ~/.config/gh) change only through their own commands in the terminal, such as "
+        "`gh auth login --web` or `ssh-keygen`, and only when the user asks."
     )
     return "\n".join(lines)
 

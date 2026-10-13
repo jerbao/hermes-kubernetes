@@ -21,16 +21,11 @@ def roots(instance):
     if not isinstance(configured, list):
         raise ValueError("write_roots must be a list")
     for root in configured:
-        path = PurePosixPath(root) if isinstance(root, str) else None
-        if (
-            path is None
-            or not path.is_absolute()
-            or path == PurePosixPath("/")
-            or ".." in path.parts
-        ):
-            raise ValueError("write_roots must contain absolute paths other than /")
-        if ".ssh" in path.parts:
-            raise ValueError("write_roots must not include credential directories")
+        if not isinstance(root, str) or os.pathsep in root or not _inside_home(PurePosixPath(root)):
+            raise ValueError(
+                "write_roots must be folders inside a terminal home, such as "
+                "/home/USER/code-repos; the home itself and its dot folders hold credentials"
+            )
     return configured
 
 
@@ -50,3 +45,17 @@ def apply(environ, policy=Path("/etc/hermes-policy")):
         print(f"Write roots skipped: {type(error).__name__}", file=sys.stderr)
         return
     environ[ROOT_VARIABLE] = os.pathsep.join(dict.fromkeys(current + extra))
+
+
+def _inside_home(path):
+    """True for /home/USER/NAME/... or /root/NAME/... where NAME is not a dot folder.
+
+    The guard builds its credential denylist from the pod's homes, not the terminal's,
+    so a root covering a terminal home would expose ~/.ssh and ~/.config/gh. Allowing
+    only plain subfolders of a home keeps them out without copying the upstream list.
+    """
+    parts = path.parts
+    if not path.is_absolute() or ".." in parts or ".ssh" in parts:
+        return False
+    base = 3 if parts[1:2] == ("home",) else 2 if parts[1:2] == ("root",) else None
+    return base is not None and len(parts) > base and not parts[base].startswith(".")
