@@ -167,6 +167,9 @@ def main():
         raise ValueError("Allowed command: gateway or dashboard")
     home = Path(os.environ.get("HERMES_HOME", "/opt/data"))
     prepare(home)
+    from hermes_kubernetes.runtime.environment_hint import apply as apply_environment_hint
+
+    apply_environment_hint(os.environ, home)
     from hermes_kubernetes.runtime.dependencies import prepare_store
 
     os.environ["HERMES_RUNTIME_DIR"] = str(prepare_store(home))
