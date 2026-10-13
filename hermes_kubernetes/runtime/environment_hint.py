@@ -44,9 +44,14 @@ def build(instance, home):
         "- The pod is never edited in place: a change goes through Git, then a new pod rolls out. "
         "Live configuration goes through `python3 hermes.py runtime exec -- hermes --profile NAME "
         "config set KEY VALUE` or the Desktop API. The terminal's config.yaml is a read-only projection.",
-        "- A write denied by HERMES_WRITE_SAFE_ROOT is an authorization boundary. Stop and ask; do "
-        "not retry it through the terminal, Python or another tool.",
     ]
+    write_roots = instance.get("write_roots") or []
+    lines.append(
+        f"- File tools (write_file, patch) may write only under {home}"
+        + (f" and these terminal folders: {', '.join(write_roots)}." if write_roots else ".")
+        + " A write outside them is denied by HERMES_WRITE_SAFE_ROOT: report it and ask where the "
+        "file should go instead of retrying through the terminal or another tool."
+    )
     return "\n".join(lines)
 
 

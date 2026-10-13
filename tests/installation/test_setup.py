@@ -89,6 +89,8 @@ class InstallationTest(unittest.TestCase):
             {"KUBERNETES_NAMESPACE": "Not_A_Namespace"},
             {"MODEL_BASE_URL": "https://user:secret@example.net"},
             {"BACKUP_EXTRA_PATHS": "../other"},
+            {"TERMINAL_WRITE_ROOTS": "relative/path"},
+            {"TERMINAL_WRITE_ROOTS": "/home/x/.ssh"},
             {"UNRECOGNIZED_SETTING": "x"},
         ]:
             with self.subTest(value=value), self.assertRaises(ValueError):

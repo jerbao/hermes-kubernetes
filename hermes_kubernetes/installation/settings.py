@@ -52,6 +52,9 @@ class Settings(dict):
         self.update({key: env[key] for key in defaults if key in env})
         self.validate()
 
+    def write_roots(self):
+        return [item for item in self["TERMINAL_WRITE_ROOTS"].split(",") if item]
+
     def require(self, *keys):
         missing = [key for key in keys if not self[key]]
         if missing:
@@ -145,6 +148,9 @@ class Settings(dict):
             r"git@github\.com:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\.git", self["INSTANCE_REPOSITORY"]
         ):
             raise ValueError("INSTANCE_REPOSITORY must be a GitHub SSH URL ending in .git")
+        from hermes_kubernetes.runtime.write_roots import roots
+
+        roots({"write_roots": self.write_roots()})
         for item in self["BACKUP_EXTRA_PATHS"].split(","):
             if item and (
                 not re.fullmatch(r"[A-Za-z0-9_./-]+", item)

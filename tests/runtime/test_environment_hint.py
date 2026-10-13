@@ -23,12 +23,29 @@ class EnvironmentHintTests(unittest.TestCase):
             "fixture-user",
             "/checkout",
             "HERMES_WRITE_SAFE_ROOT",
-            "authorization boundary",
-            "Stop and ask",
+            "File tools (write_file, patch) may write only under /state.",
+            "report it and ask where the file should go",
+            "instead of retrying through the terminal or another tool",
             "No isolated MCP executor is configured",
         ):
             with self.subTest(text=text):
                 self.assertIn(text, hint)
+
+    def test_build_lists_terminal_write_roots_in_configured_order(self):
+        # Cobre: write_roots configuradas + falha se omitir pastas ou orientar bypass.
+        hint = build(
+            {"write_roots": ["/home/u/code-repos", "/opt/work"]},
+            Path("/state"),
+        )
+
+        self.assertEqual(
+            hint.splitlines()[-1],
+            "- File tools (write_file, patch) may write only under /state "
+            "and these terminal folders: /home/u/code-repos, /opt/work. "
+            "A write outside them is denied by HERMES_WRITE_SAFE_ROOT: report it and "
+            "ask where the file should go instead of retrying through the terminal "
+            "or another tool.",
+        )
 
     def test_build_lists_only_configured_executors_and_workspace_roots(self):
         # Cobre: MCP configurado + falha se omitir roles/raiz ou inventar codegraph.
@@ -80,9 +97,10 @@ class EnvironmentHintTests(unittest.TestCase):
                     "`python3 hermes.py runtime exec -- hermes --profile NAME "
                     "config set KEY VALUE` "
                     "or the Desktop API. The terminal's config.yaml is a read-only projection.\n"
-                    "- A write denied by HERMES_WRITE_SAFE_ROOT is an authorization boundary. "
-                    "Stop and ask; do not retry it through the terminal, "
-                    "Python or another tool.",
+                    "- File tools (write_file, patch) may write only under /state. "
+                    "A write outside them is denied by HERMES_WRITE_SAFE_ROOT: report it and "
+                    "ask where the file should go instead of retrying through the terminal "
+                    "or another tool.",
                 )
 
     def test_apply_exports_when_absent_or_blank(self):

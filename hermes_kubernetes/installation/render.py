@@ -22,6 +22,8 @@ def documents(settings, manifest):
         "timezone": s["TIMEZONE"],
         "proxy": {"base_url": s["MODEL_BASE_URL"]},
     }
+    if s.write_roots():
+        instance["write_roots"] = s.write_roots()
     base = (
         f"https://github.com/{manifest['repository']}//deploy/kubernetes?ref={manifest['revision']}"
     )
