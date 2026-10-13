@@ -27,3 +27,9 @@ never committed. Credential references in sanitized projections are resolved
 from a private PVC vault. Git and images do not replace durable-state backups.
 A plugin installation uses the native package manager on the pod through the
 interface or operations bridge, and does not require rebuilding the image.
+
+At boot the pod exports `HERMES_ENVIRONMENT_HINT`, built from this installation's
+`instance.json` by `hermes_kubernetes/runtime/environment_hint.py`, so the agent knows it
+runs in a pod, where its terminal and MCP executors are, and that the safe root is a
+boundary. Set the variable yourself to override the generated text. Changing the topology
+changes the hint only after a new pod rolls out.
