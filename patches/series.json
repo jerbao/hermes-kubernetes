@@ -176,6 +176,31 @@
         "tests/tui_gateway/test_inline_rpc_timing.py",
         "tests/tui_gateway/test_session_control.py"
       ]
+    },
+    {
+      "path": "patches/0013-slow-ui-poll-dispatch.patch",
+      "description": "Keep expensive UI polls off the serial WebSocket dispatcher",
+      "files": [
+        "tui_gateway/server.py",
+        "tests/tui_gateway/test_slow_poll_dispatch.py"
+      ],
+      "native_tests": [
+        "tests/tui_gateway/test_slow_poll_dispatch.py"
+      ]
+    },
+    {
+      "path": "patches/0014-read-lock-diagnostics.patch",
+      "description": "Distinguish read-only handles and report writable read-pool fallback causes",
+      "files": [
+        "hermes_state.py",
+        "hermes_state_lock_timing.py",
+        "tests/hermes_state/test_read_path_diagnostics.py"
+      ],
+      "native_tests": [
+        "tests/hermes_state/test_read_path_diagnostics.py",
+        "tests/hermes_state/test_lock_timing.py",
+        "tests/hermes_state/test_session_db_read_conn_pool.py"
+      ]
     }
   ]
 }

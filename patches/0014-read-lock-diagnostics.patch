@@ -1,0 +1,150 @@
+diff --git a/hermes_state.py b/hermes_state.py
+index 510e257b..b2aea7f2 100644
+--- a/hermes_state.py
++++ b/hermes_state.py
+@@ -594,7 +594,7 @@ class SessionDB(
+             pass  # Diagnostic metadata must not prevent opening the database.
+         finally:
+             del caller
+-        self._lock = TimedLock(Path(self.db_path).name)
++        self._lock = TimedLock(str(self.db_path), read_only=read_only)
+         # Read-path split (WAL only): reads borrow from a BOUNDED read-only pool so they
+         # never queue behind writer flushes on self._lock (see _read_ctx); unbounded
+         # per-thread connections pinned fds for the process lifetime and hit EMFILE.
+@@ -858,14 +858,18 @@ class SessionDB(
+         readers hit SQLITE_BUSY storms, so the legacy locked path stays. Autocommit
+         reads see everything committed so far (read-your-writes for flush-then-search)."""
+         if not self._wal_active or self.read_only:
++            if not self.read_only:
++                self._lock.note_read_fallback("wal_unconfirmed")
+             return None
+         with self._read_conns_lock:
+             failed_at = self._read_open_failed_at
+             backing_off = failed_at and time.monotonic() - failed_at < _READ_OPEN_RETRY_SECONDS
+             if self._read_conns_closed or backing_off:
++                self._lock.note_read_fallback("closed" if self._read_conns_closed else "open_backoff")
+                 return None
+         # Permit BEFORE the open: openers race for permits, not descriptors.
+         if not self._read_budget.acquire(self):
++            self._lock.note_read_fallback("read_budget_unavailable")
+             logger.debug(
+                 "read pool at capacity (%d) for %s; serving this read from the "
+                 "locked writer connection", _READ_POOL_MAX, self.db_path,
+@@ -888,6 +892,7 @@ class SessionDB(
+                 raise
+             with self._read_conns_lock:
+                 self._read_open_failed_at = time.monotonic()
++            self._lock.note_read_fallback(f"open_failed:{type(exc).__name__}")
+             logger.debug("read-only connection open failed for %s", self.db_path, exc_info=True)
+             return None
+         return conn
+@@ -913,6 +918,8 @@ class SessionDB(
+         """Borrow a read connection, opening on a miss; None when the read path is unavailable.
+         A pool hit costs no permit (the connection already holds one)."""
+         if not self._wal_active or self.read_only:
++            if not self.read_only:
++                self._lock.note_read_fallback("wal_unconfirmed")
+             return None
+         try:
+             return self._read_pool.get_nowait()
+diff --git a/hermes_state_lock_timing.py b/hermes_state_lock_timing.py
+index d5c4e916..c261ba91 100644
+--- a/hermes_state_lock_timing.py
++++ b/hermes_state_lock_timing.py
+@@ -7,6 +7,7 @@ can be measured against normal use without logging every acquisition."""
+ from __future__ import annotations
+ 
+ import logging
++import os
+ import sys
+ import threading
+ import time
+@@ -39,14 +40,26 @@ def _rpc_method() -> str:
+ class TimedLock:
+     """Drop-in for ``threading.Lock`` (acquire/release/locked/context manager)."""
+ 
+-    def __init__(self, label: str) -> None:
++    def __init__(self, label: str, *, read_only: bool = False) -> None:
+         self._lock = threading.Lock()
+-        self._label = label
++        self._label = f"{label} pid={os.getpid()} instance={id(self):x} mode={'ro' if read_only else 'rw'}"
++        self._fallback_lock = threading.Lock()
++        self._fallback_logged_at: dict[str, float] = {}
+         self._acquired_at = 0.0
+         self._site: tuple[str, ...] = ()
+         self._window_start = time.monotonic()
+         self._reset_window()
+ 
++    def note_read_fallback(self, reason: str) -> None:
++        """Report why a writable handle cannot use its read pool, at most once per window."""
++        now = time.monotonic()
++        with self._fallback_lock:
++            previous = self._fallback_logged_at.get(reason)
++            if previous is not None and now - previous < _SUMMARY_EVERY_S:
++                return
++            self._fallback_logged_at[reason] = now
++        logger.info("db-read fallback db=%s reason=%s", self._label, reason)
++
+     def _reset_window(self) -> None:
+         self._count = self._slow_waits = self._slow_holds = 0
+         self._wait_total = self._wait_max = self._hold_total = self._hold_max = 0.0
+diff --git a/tests/hermes_state/test_read_path_diagnostics.py b/tests/hermes_state/test_read_path_diagnostics.py
+new file mode 100644
+index 00000000..07c19e6d
+--- /dev/null
++++ b/tests/hermes_state/test_read_path_diagnostics.py
+@@ -0,0 +1,54 @@
++"""Read-only handle locks are distinct from writer locks; fallback causes are observable."""
++
++import logging
++import sqlite3
++import time
++
++import pytest
++
++from hermes_state import SessionDB
++import hermes_state_lock_timing as timing
++
++
++@pytest.fixture
++def db(tmp_path):
++    db = SessionDB(tmp_path / "state.db")
++    yield db
++    db.close()
++
++
++def test_readonly_handle_does_not_take_writer_lock(db, caplog, monkeypatch):
++    monkeypatch.setattr(timing, "_SLOW_HOLD_S", 0)
++    caplog.set_level(logging.INFO, logger=timing.logger.name)
++    reader = SessionDB(db.db_path, read_only=True)
++    try:
++        with db._lock:
++            assert reader._read_one("SELECT 1")[0] == 1
++        logs = [r.getMessage() for r in caplog.records if "slow-hold" in r.getMessage()]
++        assert any("mode=ro" in line and "instance=" in line for line in logs)
++        assert any("mode=rw" in line and str(db.db_path) in line for line in logs)
++        assert reader._lock._label != db._lock._label
++    finally:
++        reader.close()
++
++
++@pytest.mark.parametrize("reason", ["wal_unconfirmed", "open_backoff", "read_budget_unavailable", "open_failed:OperationalError"])
++def test_writable_read_fallback_reason_is_logged_once(db, monkeypatch, caplog, reason):
++    caplog.set_level(logging.INFO, logger=timing.logger.name)
++    monkeypatch.setattr(db, "_wal_active", reason != "wal_unconfirmed")
++    if reason == "open_backoff":
++        db._read_open_failed_at = time.monotonic()
++    elif reason == "read_budget_unavailable":
++        monkeypatch.setattr(db._read_budget, "acquire", lambda owner: False)
++    elif reason.startswith("open_failed"):
++        def fail(**kwargs):
++            raise sqlite3.OperationalError("test open failure")
++        monkeypatch.setattr(db, "_connect_read_only", fail)
++    assert db._checkout_read_conn() is None
++    # Reset the backoff only for the simulated repeated open failure.
++    if reason.startswith("open_failed"):
++        db._read_open_failed_at = 0
++    assert db._checkout_read_conn() is None
++    logs = [r.getMessage() for r in caplog.records if f"reason={reason}" in r.getMessage()]
++    assert len(logs) == 1
++    assert "mode=rw" in logs[0] and str(db.db_path) in logs[0]
