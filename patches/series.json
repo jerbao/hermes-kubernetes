@@ -148,6 +148,18 @@
         "apps/desktop/src/test/fake-gateway-socket.ts"
       ],
       "native_tests": []
+    },
+    {
+      "path": "patches/0011-approval-rpc-cold-agent.patch",
+      "description": "Keep approval controls responsive during cold or failed agent initialization",
+      "files": [
+        "tui_gateway/methods_prompt.py",
+        "tests/tui_gateway/test_approval_cold_agent.py"
+      ],
+      "native_tests": [
+        "tests/tui_gateway/test_approval_cold_agent.py",
+        "tests/tui_gateway/test_protocol.py"
+      ]
     }
   ]
 }

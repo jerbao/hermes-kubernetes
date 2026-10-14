@@ -1,0 +1,95 @@
+diff --git a/tests/tui_gateway/test_approval_cold_agent.py b/tests/tui_gateway/test_approval_cold_agent.py
+new file mode 100644
+index 00000000..9139d68c
+--- /dev/null
++++ b/tests/tui_gateway/test_approval_cold_agent.py
+@@ -0,0 +1,54 @@
++"""Approval controls must remain available before the agent is ready (upstream #87429)."""
++
++import threading
++from unittest.mock import Mock
++
++import pytest
++
++from tui_gateway import server
++from tools import approval
++
++
++@pytest.mark.parametrize("state", ["cold", "failed"])
++@pytest.mark.parametrize(
++    "method, operation, extra, value, expected, args, kwargs",
++    [
++        ("pending", "list_gateway_approvals", {}, [], "approvals", ("agent-cold",), {}),
++        ("received", "ack_gateway_approval", {"request_id": "req-1"}, True,
++         "acknowledged", ("agent-cold", "req-1"), {}),
++        ("respond", "resolve_gateway_approval", {"request_id": "req-1", "choice": "once"},
++         1, "resolved", ("agent-cold", "once"), {"resolve_all": False, "request_id": "req-1"}),
++    ],
++)
++def test_approval_controls_do_not_build_or_wait(
++    monkeypatch, state, method, operation, extra, value, expected, args, kwargs,
++):
++    ready = threading.Event()
++    record = {"session_key": "agent-cold", "agent": None, "agent_ready": ready,
++              "agent_error": "build failed" if state == "failed" else None}
++    if state == "failed":
++        ready.set()
++    monkeypatch.setitem(server._sessions, "ui-cold", record)
++    build = Mock(side_effect=AssertionError("approval must not start an agent"))
++    wait = Mock(side_effect=AssertionError("approval must not wait for an agent"))
++    monkeypatch.setattr(server, "_start_agent_build", build)
++    monkeypatch.setattr(server, "_wait_agent", wait)
++    action = Mock(return_value=value)
++    monkeypatch.setattr(approval, operation, action)
++
++    response = server.handle_request({"id": "r1", "method": f"approval.{method}",
++                                      "params": {"session_id": "ui-cold", **extra}})
++
++    assert response["result"] == {expected: value}
++    action.assert_called_once_with(*args, **kwargs)
++    build.assert_not_called()
++    wait.assert_not_called()
++    assert ready.is_set() == (state == "failed")
++
++
++@pytest.mark.parametrize("method", ["pending", "received", "respond"])
++def test_unknown_session_still_rejected(monkeypatch, method):
++    monkeypatch.setattr(server, "_approval_respond_session_fallback", lambda params: None)
++    response = server.handle_request({"id": "r2", "method": f"approval.{method}",
++                                      "params": {"session_id": "unknown-cold-session"}})
++    assert response["error"]["code"] == 4001
+diff --git a/tui_gateway/methods_prompt.py b/tui_gateway/methods_prompt.py
+index f4b0b80c..fab91f94 100644
+--- a/tui_gateway/methods_prompt.py
++++ b/tui_gateway/methods_prompt.py
+@@ -1235,9 +1235,11 @@ def _(rid, params: dict) -> dict:
+     return _ok(rid, {"status": "expired"})
+ 
+ 
++# Approval state belongs to the session record, not the agent. These inline RPCs
++# must not wait for a cold build and stall other conversations on the same socket.
+ @method("approval.pending")
+ def _(rid, params: dict) -> dict:
+-    session, err = _sess(params, rid)
++    session, err = _sess_nowait(params, rid)
+     if err:
+         return err
+     return _approval_reply(
+@@ -1246,7 +1248,7 @@ def _(rid, params: dict) -> dict:
+ 
+ @method("approval.received")
+ def _(rid, params: dict) -> dict:
+-    session, err = _sess(params, rid)
++    session, err = _sess_nowait(params, rid)
+     if err:
+         return err
+     if not isinstance(request_id := params.get("request_id"), str) or not request_id:
+@@ -1257,7 +1259,7 @@ def _(rid, params: dict) -> dict:
+ 
+ @method("approval.respond")
+ def _(rid, params: dict) -> dict:
+-    session, err = _sess(params, rid)
++    session, err = _sess_nowait(params, rid)
+     if err:
+         # Session-not-found (4001) only: resolve by durable identity before failing.
+         if (err.get("error") or {}).get("code") != 4001:
