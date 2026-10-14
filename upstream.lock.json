@@ -91,6 +91,15 @@
       "description": "Refresh active session controls after gateway reconnects",
       "native_tests": [],
       "sha256": "d337f79e9d2db3a3c2b148895c5ad5ede5e1a21ee0e7b70165de416c8ec6ada1"
+    },
+    {
+      "path": "patches/0011-approval-rpc-cold-agent.patch",
+      "description": "Keep approval controls responsive during cold or failed agent initialization",
+      "native_tests": [
+        "tests/tui_gateway/test_approval_cold_agent.py",
+        "tests/tui_gateway/test_protocol.py"
+      ],
+      "sha256": "0efe48d7b7a77bb6f704c844bed2af27f4f5b77a9782968d774c3369516543a0"
     }
   ],
   "native_tests": [
@@ -108,6 +117,8 @@
     "tests/hermes_cli/test_proxy_subscription_usage.py",
     "tests/hermes_cli/test_user_providers_model_switch.py",
     "tests/tui_gateway/test_session_control.py",
-    "tests/hermes_cli/test_loops.py"
+    "tests/hermes_cli/test_loops.py",
+    "tests/tui_gateway/test_approval_cold_agent.py",
+    "tests/tui_gateway/test_protocol.py"
   ]
 }
