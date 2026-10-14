@@ -25,6 +25,8 @@ jobs:
           python-version: '3.14'
       - run: python -m pip install PyYAML==6.0.3
       - run: python hermes.py update
+        env:
+          GH_TOKEN: ${{ github.token }}
       - run: python hermes.py check
       - name: Open candidate PR
         env:

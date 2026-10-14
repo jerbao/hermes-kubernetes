@@ -1,6 +1,7 @@
 """Validate the immutable protocol shared by releases and private consumers."""
 
 import json
+import os
 import re
 from pathlib import Path
 import urllib.request
@@ -39,7 +40,13 @@ def validate(value, repository=None):
 def request(url):
     if not url.startswith("https://github.com/") and not url.startswith("https://api.github.com/"):
         raise ValueError("Only GitHub release sources are accepted")
-    req = urllib.request.Request(url, headers={"User-Agent": "hermes-kubernetes-release"})
+    headers = {"User-Agent": "hermes-kubernetes-release"}
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    # Anonymous API calls share a 60/hour quota per IP, which hosted runners exhaust.
+    # Asset downloads redirect to another host, so the token stays on the API.
+    if token and url.startswith("https://api.github.com/"):
+        headers["Authorization"] = "Bearer " + token
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=60) as response:
         data = response.read(1024 * 1024 + 1)
     if len(data) > 1024 * 1024:
