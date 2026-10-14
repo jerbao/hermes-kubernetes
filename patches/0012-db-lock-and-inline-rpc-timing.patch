@@ -1,0 +1,259 @@
+diff --git a/hermes_state.py b/hermes_state.py
+index 2bad0da6..510e257b 100644
+--- a/hermes_state.py
++++ b/hermes_state.py
+@@ -58,6 +58,7 @@ from hermes_state_schema import SessionSchemaMixin
+ import hermes_state_holders as _state_holders
+ import hermes_state_lockguard as _lockguard
+ from hermes_state_lockowners import log_write_lock_holders
++from hermes_state_lock_timing import TimedLock
+ from hermes_state_dbfile import (
+     _connect_tracked_db, _fd_is_truly_unlinked, _prepare_connection_retirement,
+     _read_sqlite_application_id, _stat_sqlite_sidecar_identity,
+@@ -593,7 +594,7 @@ class SessionDB(
+             pass  # Diagnostic metadata must not prevent opening the database.
+         finally:
+             del caller
+-        self._lock = threading.Lock()
++        self._lock = TimedLock(Path(self.db_path).name)
+         # Read-path split (WAL only): reads borrow from a BOUNDED read-only pool so they
+         # never queue behind writer flushes on self._lock (see _read_ctx); unbounded
+         # per-thread connections pinned fds for the process lifetime and hit EMFILE.
+diff --git a/hermes_state_lock_timing.py b/hermes_state_lock_timing.py
+new file mode 100644
+index 00000000..d5c4e916
+--- /dev/null
++++ b/hermes_state_lock_timing.py
+@@ -0,0 +1,105 @@
++"""Wait/hold timing for SessionDB's writer lock.
++
++Logs single acquisitions that waited or held past a threshold, naming the call chain
++(and, for waits, the chain that held the lock), plus a periodic aggregate so contention
++can be measured against normal use without logging every acquisition."""
++
++from __future__ import annotations
++
++import logging
++import sys
++import threading
++import time
++
++logger = logging.getLogger(__name__)
++
++_SLOW_WAIT_S = 0.1
++_SLOW_HOLD_S = 0.25
++_SUMMARY_EVERY_S = 300.0
++_SITE_DEPTH = 4
++
++
++def _call_site() -> tuple[str, ...]:
++    frame = sys._getframe(1)
++    names: list[str] = []
++    while frame is not None and len(names) < _SITE_DEPTH:
++        if frame.f_code.co_filename != __file__:
++            names.append(frame.f_code.co_name)
++        frame = frame.f_back
++    return tuple(names)
++
++
++def _rpc_method() -> str:
++    # Diagnostic only; the state layer must not import the gateway.
++    server = sys.modules.get("tui_gateway.server")
++    method = getattr(server, "_current_rpc_method", None)
++    return (method.get() if method is not None else "") or "-"
++
++
++class TimedLock:
++    """Drop-in for ``threading.Lock`` (acquire/release/locked/context manager)."""
++
++    def __init__(self, label: str) -> None:
++        self._lock = threading.Lock()
++        self._label = label
++        self._acquired_at = 0.0
++        self._site: tuple[str, ...] = ()
++        self._window_start = time.monotonic()
++        self._reset_window()
++
++    def _reset_window(self) -> None:
++        self._count = self._slow_waits = self._slow_holds = 0
++        self._wait_total = self._wait_max = self._hold_total = self._hold_max = 0.0
++
++    def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
++        holder = self._site
++        started = time.monotonic()
++        if not self._lock.acquire(blocking, timeout):
++            return False
++        self._acquired_at = now = time.monotonic()
++        self._site = site = _call_site()
++        waited = now - started
++        self._count += 1
++        self._wait_total += waited
++        self._wait_max = max(self._wait_max, waited)
++        if waited >= _SLOW_WAIT_S:
++            self._slow_waits += 1
++            logger.info(
++                "db-lock slow-wait db=%s wait_ms=%d thread=%s rpc=%s site=%s holder=%s",
++                self._label, waited * 1000, threading.current_thread().name, _rpc_method(),
++                "<".join(site), "<".join(holder))
++        return True
++
++    def release(self) -> None:
++        now = time.monotonic()
++        held = now - self._acquired_at
++        site = self._site
++        self._hold_total += held
++        self._hold_max = max(self._hold_max, held)
++        slow = held >= _SLOW_HOLD_S
++        self._slow_holds += slow
++        summary = None
++        if now - self._window_start >= _SUMMARY_EVERY_S:
++            summary = (
++                now - self._window_start, self._count, self._wait_total * 1000, self._wait_max * 1000,
++                self._slow_waits, self._hold_total * 1000, self._hold_max * 1000, self._slow_holds)
++            self._window_start = now
++            self._reset_window()
++        self._lock.release()
++        if slow:
++            logger.info(
++                "db-lock slow-hold db=%s hold_ms=%d thread=%s rpc=%s site=%s",
++                self._label, held * 1000, threading.current_thread().name, _rpc_method(), "<".join(site))
++        if summary is not None:
++            logger.info(
++                "db-lock summary db=%s window_s=%d acquisitions=%d wait_total_ms=%d wait_max_ms=%d "
++                "slow_waits=%d hold_total_ms=%d hold_max_ms=%d slow_holds=%d", self._label, *summary)
++
++    def locked(self) -> bool:
++        return self._lock.locked()
++
++    def __enter__(self) -> bool:
++        return self.acquire()
++
++    def __exit__(self, *exc) -> None:
++        self.release()
+diff --git a/tests/hermes_state/test_lock_timing.py b/tests/hermes_state/test_lock_timing.py
+new file mode 100644
+index 00000000..d2d2d11c
+--- /dev/null
++++ b/tests/hermes_state/test_lock_timing.py
+@@ -0,0 +1,63 @@
++"""SessionDB's writer lock reports slow waits/holds without changing Lock semantics."""
++
++import logging
++import threading
++import time
++
++import hermes_state_lock_timing as timing
++from hermes_state_lock_timing import TimedLock
++
++
++def test_lock_semantics_match_threading_lock():
++    lock = TimedLock("state.db")
++    assert lock.acquire(blocking=False)
++    assert lock.locked()
++    assert not lock.acquire(blocking=False)
++    assert not lock.acquire(timeout=0.01)
++    lock.release()
++    with lock:
++        assert lock.locked()
++    assert not lock.locked()
++
++
++def test_slow_wait_names_waiter_and_holder_and_slow_hold_names_holder(monkeypatch, caplog):
++    monkeypatch.setattr(timing, "_SLOW_WAIT_S", 0.02)
++    monkeypatch.setattr(timing, "_SLOW_HOLD_S", 0.02)
++    caplog.set_level(logging.INFO, logger=timing.logger.name)
++    lock = TimedLock("state.db")
++    held, waiting = threading.Event(), threading.Event()
++
++    def holding_writer():
++        with lock:
++            held.set()
++            waiting.wait(timeout=5)
++            time.sleep(0.1)
++
++    def waiting_writer():
++        held.wait(timeout=5)
++        waiting.set()
++        with lock:
++            pass
++
++    threads = [threading.Thread(target=holding_writer), threading.Thread(target=waiting_writer)]
++    for thread in threads:
++        thread.start()
++    for thread in threads:
++        thread.join(timeout=5)
++
++    waits = [r.getMessage() for r in caplog.records if "slow-wait" in r.getMessage()]
++    holds = [r.getMessage() for r in caplog.records if "slow-hold" in r.getMessage()]
++    assert len(waits) == 1
++    assert "site=waiting_writer" in waits[0] and "holder=holding_writer" in waits[0]
++    assert any("site=holding_writer" in message for message in holds)
++
++
++def test_fast_use_logs_only_the_periodic_summary(monkeypatch, caplog):
++    monkeypatch.setattr(timing, "_SUMMARY_EVERY_S", 0.0)
++    caplog.set_level(logging.INFO, logger=timing.logger.name)
++    lock = TimedLock("state.db")
++    with lock:
++        pass
++    messages = [r.getMessage() for r in caplog.records]
++    assert len(messages) == 1
++    assert "db-lock summary db=state.db" in messages[0] and "acquisitions=1 " in messages[0]
+diff --git a/tests/tui_gateway/test_inline_rpc_timing.py b/tests/tui_gateway/test_inline_rpc_timing.py
+new file mode 100644
+index 00000000..7b974005
+--- /dev/null
++++ b/tests/tui_gateway/test_inline_rpc_timing.py
+@@ -0,0 +1,23 @@
++"""Inline RPCs hold the socket reader; slow ones are logged with their method name."""
++
++import logging
++
++from tui_gateway import server
++
++
++def _dispatch_inline(monkeypatch, threshold):
++    monkeypatch.setitem(server._methods, "test.inline", lambda rid, params: server._ok(rid, {}))
++    monkeypatch.setattr(server, "_INLINE_RPC_SLOW_S", threshold)
++    return server.dispatch({"id": "r1", "method": "test.inline", "params": {}})
++
++
++def test_slow_inline_rpc_is_logged(monkeypatch, caplog):
++    caplog.set_level(logging.INFO, logger=server.logger.name)
++    assert _dispatch_inline(monkeypatch, 0.0)["result"] == {}
++    assert any("rpc inline-slow method=test.inline" in r.getMessage() for r in caplog.records)
++
++
++def test_fast_inline_rpc_is_not_logged(monkeypatch, caplog):
++    caplog.set_level(logging.INFO, logger=server.logger.name)
++    assert _dispatch_inline(monkeypatch, 60.0)["result"] == {}
++    assert not any("inline-slow" in r.getMessage() for r in caplog.records)
+diff --git a/tui_gateway/rpc_dispatch.py b/tui_gateway/rpc_dispatch.py
+index b2a2587c..9ce2efc3 100644
+--- a/tui_gateway/rpc_dispatch.py
++++ b/tui_gateway/rpc_dispatch.py
+@@ -5,6 +5,9 @@ from __future__ import annotations
+ from .method_ctx import bind_module
+ 
+ 
++_INLINE_RPC_SLOW_S = 0.25
++
++
+ def handle_request(req: dict) -> dict | None:
+     from hermes_cli.backend_retirement import retirement
+ 
+@@ -60,7 +63,13 @@ def dispatch(req: dict, transport: Optional[Transport] = None) -> dict | None:
+         if isinstance(normalized, dict):
+             return normalized
+         if normalized[1] not in _LONG_HANDLERS:
+-            return handle_request(req)
++            started = time.monotonic()
++            try:
++                return handle_request(req)
++            finally:
++                # Inline handlers hold the socket reader; everything queued behind waits this long.
++                if (elapsed := time.monotonic() - started) >= _INLINE_RPC_SLOW_S:
++                    logger.info("rpc inline-slow method=%s ms=%d", normalized[1], elapsed * 1000)
+         from hermes_cli.backend_retirement import retirement
+ 
+         # Reserve BEFORE enqueueing: a queued handler has accepted work even though no worker runs yet.
