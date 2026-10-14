@@ -1,0 +1,217 @@
+diff --git a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.test.tsx b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.test.tsx
+index c7c477f7..51dc6793 100644
+--- a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.test.tsx
++++ b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.test.tsx
+@@ -59,6 +59,13 @@ import { FakeWebSocket } from '../../../test/fake-gateway-socket'
+ import { takeGatewaySurvivor } from './gateway-hmr-survivor'
+ import { primaryRuntimeConnectionId, useGatewayBoot } from './use-gateway-boot'
+ 
++const { refreshControlAfterReconnect } = vi.hoisted(() => ({ refreshControlAfterReconnect: vi.fn() }))
++
++vi.mock('@/store/session-control', async importOriginal => ({
++  ...(await importOriginal()),
++  refreshSessionControlAfterReconnect: refreshControlAfterReconnect
++}))
++
+ vi.mock(import('@/store/notifications'), async importOriginal => ({
+   ...(await importOriginal()),
+   notifyError: vi.fn()
+@@ -226,6 +233,7 @@ beforeEach(() => {
+   backendExit = null
+   clearNotifications()
+   vi.mocked(notifyError).mockReset()
++  refreshControlAfterReconnect.mockReset()
+   vi.mocked(warnIfTerminalBackendUnavailable).mockClear()
+   ;(globalThis as { WebSocket: unknown }).WebSocket = FakeWebSocket
+   ;(window as { hermesDesktop?: unknown }).hermesDesktop = fakeDesktop()
+@@ -1515,6 +1523,7 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () =>
+   })
+ 
+   it('FIX: a successful reconnect after a prolonged drop restores the open gateway', async () => {
++    setActiveSessionId('active-session')
+     render(<Harness />)
+     await flushAsync()
+ 
+@@ -1534,6 +1543,10 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () =>
+ 
+     expect($gatewayState.get()).toBe('open')
+     expect($desktopBoot.get().error).toBeNull()
++    expect(refreshControlAfterReconnect).not.toHaveBeenCalled()
++    act(() => FakeWebSocket.instances.at(-1)!.serverEvent('gateway.ready'))
++    expect(refreshControlAfterReconnect).toHaveBeenCalledTimes(1)
++    expect(refreshControlAfterReconnect).toHaveBeenCalledWith('active-session')
+   })
+ 
+   it('a getConnection() that hangs on reconnect does not permanently latch the backoff loop (#93454)', async () => {
+diff --git a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
+index 89a3534e..f32beaa1 100644
+--- a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
++++ b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
+@@ -33,6 +33,7 @@ import {
+   setDesktopBootStep
+ } from '@/store/boot'
+ import { resetBackgroundPollingGuard } from '@/store/composer-status'
++import { refreshSessionControlAfterReconnect } from '@/store/session-control'
+ import { noteBackendDrop, noteBackendExited } from '@/store/desktop-metrics'
+ import {
+   $gateway,
+@@ -328,6 +329,7 @@ export function useGatewayBoot({
+     }
+ 
+     let bootCompleted = false
++    let refreshSessionControlOnReady = false
+     // The other way a cold boot concludes. Main keeps startHermes() available
+     // after the renderer gave up, and every later getConnection() caller
+     // re-enters it, replaying `backend.resolve` (running:true) then
+@@ -1102,9 +1104,12 @@ export function useGatewayBoot({
+         // so dismiss it here once we're open again — otherwise the overlay sticks
+         // at ~94%. A no-op on a normal (non-rebuild) reconnect.
+         if (bootCompleted) {
++          refreshSessionControlOnReady = true
++
+           completeDesktopBoot()
+         }
+       } else if (st === 'closed' || st === 'error') {
++        refreshSessionControlOnReady = false
+         if (isStableOpen(openedAt)) {
+           resetReconnectBackoff()
+         }
+@@ -1132,6 +1137,15 @@ export function useGatewayBoot({
+     const sourceProfileNow = () => normalizeProfileKey($activeGatewayProfile.get())
+ 
+     const offEvent = gateway.onEvent(event => {
++      if (event.type === 'gateway.ready' && refreshSessionControlOnReady) {
++        refreshSessionControlOnReady = false
++        const activeSessionId = $activeSessionId.get()
++
++        if (activeSessionId) {
++          void refreshSessionControlAfterReconnect(activeSessionId)
++        }
++      }
++
+       const connectionId = activeGatewayConnectionId()
+       const sourceProfile = sourceProfileNow()
+ 
+diff --git a/apps/desktop/src/store/session-control.test.ts b/apps/desktop/src/store/session-control.test.ts
+index ed4f15d3..1ea14f5c 100644
+--- a/apps/desktop/src/store/session-control.test.ts
++++ b/apps/desktop/src/store/session-control.test.ts
+@@ -18,6 +18,7 @@ import {
+   clearSessionControl,
+   parseSessionControlSnapshot,
+   refreshSessionControl,
++  refreshSessionControlAfterReconnect,
+   refreshSupportedSessionControlAfterTurn,
+   runSessionControlAction,
+   type SessionControlSnapshot
+@@ -420,6 +421,33 @@ describe('session-control store', () => {
+     expect($sessionControlBySession.get().s1!.snapshot!.revision).toBe('newer-read')
+   })
+ 
++  it('coalesces reconnect reads and lets the reconnect snapshot supersede an older request', async () => {
++    const olderResponse = deferred<unknown>()
++    const reconnectResponse = deferred<unknown>()
++    const request = vi
++      .fn()
++      .mockImplementationOnce(() => olderResponse.promise)
++      .mockImplementationOnce(() => reconnectResponse.promise)
++    useGateway(request)
++
++    const older = refreshSessionControl('s1')
++    const reconnect = refreshSessionControlAfterReconnect('s1')
++    const duplicateReconnect = refreshSessionControlAfterReconnect('s1')
++
++    expect(duplicateReconnect).toBe(reconnect)
++    expect(request).toHaveBeenCalledTimes(2)
++
++    reconnectResponse.resolve({ control: { ...FULL_SNAPSHOT, revision: 'reconnected' } })
++    await expect(reconnect).resolves.toMatchObject({ snapshot: { revision: 'reconnected' } })
++    olderResponse.resolve({ control: { ...FULL_SNAPSHOT, revision: 'pre-reconnect' } })
++    await older
++
++    expect($sessionControlBySession.get().s1).toMatchObject({
++      error: null,
++      snapshot: { revision: 'reconnected' }
++    })
++  })
++
+   it('does not let a late post-turn refresh overwrite a newer event', async () => {
+     applySessionControlSnapshot('s1', FULL_SNAPSHOT)
+     const slow = deferred<unknown>()
+diff --git a/apps/desktop/src/store/session-control.ts b/apps/desktop/src/store/session-control.ts
+index 138503da..3d0b0c91 100644
+--- a/apps/desktop/src/store/session-control.ts
++++ b/apps/desktop/src/store/session-control.ts
+@@ -141,6 +141,7 @@ const ERROR_LIMIT = 240
+ 
+ const versions = new Map<string, number>()
+ const eventVersions = new Map<string, number>()
++const reconnectReads = new Map<string, Promise<SessionControlEntry | undefined>>()
+ 
+ export const $sessionControlBySession = atom<Record<string, SessionControlEntry>>({})
+ 
+@@ -606,6 +607,7 @@ export function clearSessionControl(sessionId: string): void {
+   }
+ 
+   advanceVersion(sessionId)
++  reconnectReads.delete(sessionId)
+   const entries = $sessionControlBySession.get()
+ 
+   if (!(sessionId in entries)) {
+@@ -630,6 +632,7 @@ export function clearAllSessionControl(): void {
+   $sessionControlBySession.set({})
+   versions.clear()
+   eventVersions.clear()
++  reconnectReads.clear()
+ }
+ 
+ function beginRead(sessionId: string, background: boolean): number {
+@@ -799,6 +802,31 @@ export async function refreshSessionControl(
+   }
+ }
+ 
++/** Refreshes a session after the gateway reconnects, coalescing that reconnect edge. */
++export function refreshSessionControlAfterReconnect(
++  sessionId: string
++): Promise<SessionControlEntry | undefined> {
++  if (!sessionId) {
++    return Promise.resolve(undefined)
++  }
++
++  const pending = reconnectReads.get(sessionId)
++
++  if (pending) {
++    return pending
++  }
++
++  const refresh = refreshSessionControl(sessionId, { background: true })
++  reconnectReads.set(sessionId, refresh)
++  void refresh.finally(() => {
++    if (reconnectReads.get(sessionId) === refresh) {
++      reconnectReads.delete(sessionId)
++    }
++  })
++
++  return refresh
++}
++
+ /** Runs an allowlisted backend control action; callers own any composer/UI dispatch. */
+ export async function runSessionControlAction(
+   sessionId: string,
+diff --git a/apps/desktop/src/test/fake-gateway-socket.ts b/apps/desktop/src/test/fake-gateway-socket.ts
+index 1639ef2f..0b743c02 100644
+--- a/apps/desktop/src/test/fake-gateway-socket.ts
++++ b/apps/desktop/src/test/fake-gateway-socket.ts
+@@ -83,6 +83,12 @@ export class FakeWebSocket {
+     // 'silent': swallow — a healthy socket answers, a half-open one never does.
+   }
+ 
++  serverEvent(type: string) {
++    this.emit('message', {
++      data: JSON.stringify({ jsonrpc: '2.0', method: 'event', params: { type } })
++    })
++  }
++
+   private emit(type: string, ev: unknown) {
+     for (const fn of this.listeners[type] ?? []) {
+       fn(ev)

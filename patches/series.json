@@ -119,6 +119,35 @@
         "tests/hermes_cli/test_proxy_subscription_usage.py",
         "tests/hermes_cli/test_user_providers_model_switch.py"
       ]
+    },
+    {
+      "path": "patches/0009-session-control-read-rpc.patch",
+      "description": "Keep session-control snapshots responsive under SessionDB writer contention",
+      "files": [
+        "hermes_state.py",
+        "hermes_cli/goals.py",
+        "hermes_cli/loops.py",
+        "tui_gateway/methods_session_control.py",
+        "tui_gateway/server.py",
+        "tests/tui_gateway/test_session_control.py",
+        "tests/hermes_cli/test_loops.py"
+      ],
+      "native_tests": [
+        "tests/tui_gateway/test_session_control.py",
+        "tests/hermes_cli/test_loops.py"
+      ]
+    },
+    {
+      "path": "patches/0010-desktop-session-control-reconnect.patch",
+      "description": "Refresh active session controls after gateway reconnects",
+      "files": [
+        "apps/desktop/src/store/session-control.ts",
+        "apps/desktop/src/store/session-control.test.ts",
+        "apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts",
+        "apps/desktop/src/app/gateway/hooks/use-gateway-boot.test.tsx",
+        "apps/desktop/src/test/fake-gateway-socket.ts"
+      ],
+      "native_tests": []
     }
   ]
 }

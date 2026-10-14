@@ -76,6 +76,21 @@
         "tests/hermes_cli/test_proxy_subscription_usage.py",
         "tests/hermes_cli/test_user_providers_model_switch.py"
       ]
+    },
+    {
+      "path": "patches/0009-session-control-read-rpc.patch",
+      "description": "Keep session-control snapshots responsive under SessionDB writer contention",
+      "native_tests": [
+        "tests/tui_gateway/test_session_control.py",
+        "tests/hermes_cli/test_loops.py"
+      ],
+      "sha256": "c88fbca44c2805c5e27b4e2add3dc0b6f973513ade13f4dc67935a2fbf7faeaa"
+    },
+    {
+      "path": "patches/0010-desktop-session-control-reconnect.patch",
+      "description": "Refresh active session controls after gateway reconnects",
+      "native_tests": [],
+      "sha256": "d337f79e9d2db3a3c2b148895c5ad5ede5e1a21ee0e7b70165de416c8ec6ada1"
     }
   ],
   "native_tests": [
@@ -91,6 +106,8 @@
     "tests/tools/test_mcp_stdio_executor.py",
     "tests/tui_gateway/test_mcp_catalog_rpc_transport.py",
     "tests/hermes_cli/test_proxy_subscription_usage.py",
-    "tests/hermes_cli/test_user_providers_model_switch.py"
+    "tests/hermes_cli/test_user_providers_model_switch.py",
+    "tests/tui_gateway/test_session_control.py",
+    "tests/hermes_cli/test_loops.py"
   ]
 }
