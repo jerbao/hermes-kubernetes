@@ -600,8 +600,8 @@ index 3a9f2907..d03d65c9 100644
 +                         "mapped_files": self._sync_manager.return_remote_paths()}).encode()}
 +        ssh_cmd = self._build_ssh_command() + [command]
          with open(dest, "wb") as f:
--            result = subprocess.run(ssh_cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.PIPE, timeout=120)
-+            result = subprocess.run(ssh_cmd, **transfer, stdout=f, stderr=subprocess.PIPE, timeout=120)
+-            result = subprocess.run(ssh_cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.PIPE, timeout=120, check=False)
++            result = subprocess.run(ssh_cmd, **transfer, stdout=f, stderr=subprocess.PIPE, timeout=120, check=False)
          if result.returncode != 0:
              stderr = result.stderr.decode(errors="replace").strip()
              # A socket not named *.sock is the only rc=2 we knowingly accept, and only when
