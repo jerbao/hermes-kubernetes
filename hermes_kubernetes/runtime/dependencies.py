@@ -35,7 +35,18 @@ def prepare_store(home, packaged=Path("/opt/hermes/tools")):
             else {"schema": source["schema"], "packages": {}}
         )
         for name, record in source["packages"].items():
-            entry = record.get("entry")
+            if "entry" not in record:
+                # State records (the image's venv selection) carry no files to link.
+                extras = record.get("extras")
+                if (
+                    not isinstance(record.get("stamp"), str)
+                    or not isinstance(extras, list)
+                    or any(not isinstance(extra, str) for extra in extras)
+                ):
+                    raise ValueError("Invalid packaged state record")
+                facts["packages"].setdefault(name, record)
+                continue
+            entry = record["entry"]
             if not entry or Path(entry).name != entry or not (packaged / entry).is_dir():
                 raise ValueError("Invalid packaged tool record")
             destination = store / entry
