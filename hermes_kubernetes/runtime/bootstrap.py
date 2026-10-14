@@ -155,7 +155,14 @@ def prepare(
             (home / directory).mkdir(exist_ok=True)
         from hermes_kubernetes.state.skills import installed_update
 
-        installed_update(home, source, bundle)
+        skill_update = installed_update(home, source, bundle, allow_conflicts=True)
+        if not skill_update["ready"]:
+            print(
+                "Managed skill update pending: "
+                f"{len(skill_update['conflicts'])} conflict(s); see "
+                "state/versioning/managed-skills/conflicts.json",
+                file=sys.stderr,
+            )
         provenance = json.loads((source / "source-provenance.json").read_text())
         provenance["instance"] = instance["name"]
         atomic_write(state / "hermes-provenance.json", json.dumps(provenance))

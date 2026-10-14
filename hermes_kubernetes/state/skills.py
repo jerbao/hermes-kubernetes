@@ -152,6 +152,7 @@ def installed_update(
     *,
     seed_only=False,
     distribution_baseline=None,
+    allow_conflicts=False,
 ):
     """Prepare every profile before writing any skill; retain a private source baseline."""
     from hermes_kubernetes.state.versioning import atomic, dump, profiles
@@ -230,6 +231,8 @@ def installed_update(
         conflict_path = directory / "conflicts.json"
         if conflicts:
             atomic(conflict_path, dump(report))
+            if allow_conflicts:
+                return report
             raise ValueError(
                 "Managed skill update blocked; see state/versioning/managed-skills/conflicts.json"
             )

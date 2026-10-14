@@ -123,6 +123,34 @@ class SkillUpdatesTests(unittest.TestCase):
         self.assertNotIn(b"<<<<<<<", active.read_bytes())
         self.assertTrue((baseline.parent / "conflicts.json").is_file())
 
+    def test_runtime_conflict_is_reported_without_partial_skill_update(self):
+        installed_update(self.home, self.source, self.bundle)
+        active = self.home / "skills/guide/SKILL.md"
+        active.write_bytes(TEXT.replace(b"first", b"personal first"))
+        management = self.home / "skills/management/SKILL.md"
+        management_before = management.read_bytes()
+        baseline = self.home / "state/versioning/managed-skills/bases.json.gz"
+        baseline_before = baseline.read_bytes()
+        put(
+            self.source / "skills/guide/SKILL.md",
+            TEXT.replace(b"first", b"upstream first"),
+        )
+        put(
+            self.bundle / "skills/management/SKILL.md",
+            management_before.replace(b"first", b"new first"),
+        )
+        self.upgrade()
+
+        report = installed_update(self.home, self.source, self.bundle, allow_conflicts=True)
+
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["conflicts"], ["default/skills/guide/SKILL.md"])
+        self.assertEqual(active.read_bytes(), TEXT.replace(b"first", b"personal first"))
+        self.assertEqual(management.read_bytes(), management_before)
+        self.assertEqual(baseline.read_bytes(), baseline_before)
+        conflict_report = json.loads((baseline.parent / "conflicts.json").read_text())
+        self.assertEqual(conflict_report["conflicts"], report["conflicts"])
+
     def test_native_removal_is_not_resurrected(self):
         installed_update(self.home, self.source, self.bundle)
         shutil.rmtree(self.home / "skills/guide")
