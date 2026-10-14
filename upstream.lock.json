@@ -100,6 +100,16 @@
         "tests/tui_gateway/test_protocol.py"
       ],
       "sha256": "0efe48d7b7a77bb6f704c844bed2af27f4f5b77a9782968d774c3369516543a0"
+    },
+    {
+      "path": "patches/0012-db-lock-and-inline-rpc-timing.patch",
+      "description": "Log slow SessionDB writer-lock waits/holds and slow inline RPCs on the socket reader",
+      "native_tests": [
+        "tests/hermes_state/test_lock_timing.py",
+        "tests/tui_gateway/test_inline_rpc_timing.py",
+        "tests/tui_gateway/test_session_control.py"
+      ],
+      "sha256": "7c3f9d22181fa5b6531c96b6536c9605128350b67cbb3ec13f2ab7bcbad5c01f"
     }
   ],
   "native_tests": [
@@ -119,6 +129,8 @@
     "tests/tui_gateway/test_session_control.py",
     "tests/hermes_cli/test_loops.py",
     "tests/tui_gateway/test_approval_cold_agent.py",
-    "tests/tui_gateway/test_protocol.py"
+    "tests/tui_gateway/test_protocol.py",
+    "tests/hermes_state/test_lock_timing.py",
+    "tests/tui_gateway/test_inline_rpc_timing.py"
   ]
 }
