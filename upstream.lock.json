@@ -110,6 +110,24 @@
         "tests/tui_gateway/test_session_control.py"
       ],
       "sha256": "7c3f9d22181fa5b6531c96b6536c9605128350b67cbb3ec13f2ab7bcbad5c01f"
+    },
+    {
+      "path": "patches/0013-slow-ui-poll-dispatch.patch",
+      "description": "Keep expensive UI polls off the serial WebSocket dispatcher",
+      "native_tests": [
+        "tests/tui_gateway/test_slow_poll_dispatch.py"
+      ],
+      "sha256": "b6cff1c1ad4ebaf684e0a660cc4e081cdb95de76e6bfe6797190130ab7bdb355"
+    },
+    {
+      "path": "patches/0014-read-lock-diagnostics.patch",
+      "description": "Distinguish read-only handles and report writable read-pool fallback causes",
+      "native_tests": [
+        "tests/hermes_state/test_read_path_diagnostics.py",
+        "tests/hermes_state/test_lock_timing.py",
+        "tests/hermes_state/test_session_db_read_conn_pool.py"
+      ],
+      "sha256": "43a88bbdee49d1db97df2fa643446f43257788a693892a138a6d5a0d1d35782f"
     }
   ],
   "native_tests": [
@@ -131,6 +149,9 @@
     "tests/tui_gateway/test_approval_cold_agent.py",
     "tests/tui_gateway/test_protocol.py",
     "tests/hermes_state/test_lock_timing.py",
-    "tests/tui_gateway/test_inline_rpc_timing.py"
+    "tests/tui_gateway/test_inline_rpc_timing.py",
+    "tests/tui_gateway/test_slow_poll_dispatch.py",
+    "tests/hermes_state/test_read_path_diagnostics.py",
+    "tests/hermes_state/test_session_db_read_conn_pool.py"
   ]
 }

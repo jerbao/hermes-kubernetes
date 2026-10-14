@@ -1,0 +1,63 @@
+diff --git a/tests/tui_gateway/test_slow_poll_dispatch.py b/tests/tui_gateway/test_slow_poll_dispatch.py
+new file mode 100644
+index 00000000..a670d9c2
+--- /dev/null
++++ b/tests/tui_gateway/test_slow_poll_dispatch.py
+@@ -0,0 +1,45 @@
++"""Slow UI polls must not hold the shared socket dispatcher or lose transport context."""
++
++import threading
++
++import pytest
++
++from tui_gateway import server
++from tui_gateway.transport import current_transport
++
++
++@pytest.mark.parametrize("method,params", [
++    ("session.context_breakdown", {"session_id": "s"}),
++    ("subagent.list", {"session_id": "s"}),
++    ("pet.info.meta", {}),
++])
++def test_slow_poll_leaves_dispatcher_available(monkeypatch, method, params):
++    entered, release, written = threading.Event(), threading.Event(), threading.Event()
++    replies, contexts = [], []
++
++    class Transport:
++        def write(self, reply):
++            replies.append(reply)
++            written.set()
++            return True
++
++    transport = Transport()
++
++    def slow(rid, params):
++        contexts.append((current_transport(), server._current_rpc_method.get()))
++        entered.set()
++        release.wait(5)
++        return server._ok(rid, {})
++
++    monkeypatch.setitem(server._methods, method, slow)
++    monkeypatch.setitem(server._methods, "test.ping", lambda rid, params: server._ok(rid, {}))
++    try:
++        assert server.dispatch({"id": "poll", "method": method, "params": params}, transport) is None
++        assert entered.wait(5)
++        assert server.dispatch({"id": "ping", "method": "test.ping", "params": {}}, transport)["id"] == "ping"
++        assert not written.is_set()
++    finally:
++        release.set()
++    assert written.wait(5)
++    assert replies[0]["id"] == "poll"
++    assert contexts == [(transport, method)]
+diff --git a/tui_gateway/server.py b/tui_gateway/server.py
+index f22a9588..08418121 100644
+--- a/tui_gateway/server.py
++++ b/tui_gateway/server.py
+@@ -194,6 +194,7 @@ _LONG_HANDLERS = frozenset({
+     "session.resume", "session.save", "session.workspace.move", "shell.exec", "skills.manage", "slash.exec",
+     "onboarding.ensure_setup_profile", "onboarding.ensure_setup_session", "onboarding.reset_setup_profile",
+     "session.start_chat",
++    "session.context_breakdown", "subagent.list", "pet.info.meta",
+     "session.control.read",  # WAL snapshot read; keep shared-DB contention off the WS dispatcher
+     "command.dispatch",  # /goal draft invokes the auxiliary model; never block the RPC reader
+     "shared_metrics.set",  # consent reconcile waits on the metrics store's write lock
