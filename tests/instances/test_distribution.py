@@ -1,6 +1,7 @@
 """Verify release isolation, immutable dependency pins and transactional adoption."""
 
 import importlib.util
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -205,6 +206,27 @@ class DistributionTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ValueError, "tagged source"):
                 resolve("owner/distribution")
+
+    def test_release_requests_authenticate_only_against_the_api(self):
+        from hermes_kubernetes.releases import manifest as release_manifest
+
+        sent = []
+
+        def urlopen(req, timeout):
+            sent.append(req.get_header("Authorization"))
+            return io.BytesIO(b"{}")
+
+        with (
+            patch.dict("os.environ", {"GH_TOKEN": "secret"}),
+            patch("urllib.request.urlopen", urlopen),
+        ):
+            release_manifest.request(
+                "https://api.github.com/repos/owner/distribution/releases/latest"
+            )
+            release_manifest.request(
+                "https://github.com/owner/distribution/releases/download/v0.1.0/distribution.json"
+            )
+        self.assertEqual(sent, ["Bearer secret", None])
 
     def test_actual_cross_repository_skill_reconciliation_preserves_private_edit(self):
         from tests.state.test_skill_updates import SkillUpdatesTests, TEXT, git, put
