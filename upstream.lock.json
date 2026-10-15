@@ -18,7 +18,7 @@
     },
     {
       "path": "patches/0002-ssh-terminal.patch",
-      "sha256": "4a63529bf4d57c50773da8d83495aa3663926f06b40d3dd2bce51144b346df7f",
+      "sha256": "346bb10d485c3b6f6237f9d542388484a7df16538b71c50167bd7bcf85c165bf",
       "description": "SSH transport, file synchronization and profile isolation",
       "native_tests": [
         "tests/tools/test_ssh_command_batches.py",

@@ -63,10 +63,10 @@ index 00000000..a1e89119
 +    assert retained.read_bytes() == b'keep'
 diff --git a/tests/tools/test_ssh_incremental_sync.py b/tests/tools/test_ssh_incremental_sync.py
 new file mode 100644
-index 00000000..f58bf492
+index 00000000..3aee078a
 --- /dev/null
 +++ b/tests/tools/test_ssh_incremental_sync.py
-@@ -0,0 +1,188 @@
+@@ -0,0 +1,201 @@
 +"""A new environment on a persistent host uploads only what the host lacks, and keeps progress."""
 +import hashlib
 +import os
@@ -91,9 +91,10 @@ index 00000000..f58bf492
 +    return files
 +
 +
-+def stat_of(host_path):
++def stat_of(host_path, written_after=60.0):
++    """The state of a remote copy of *host_path* written *written_after* seconds after its last change."""
 +    info = os.stat(host_path)
-+    return info.st_size, int(info.st_mtime)
++    return info.st_size, int(info.st_mtime), info.st_ctime + written_after
 +
 +
 +def manager_for(files, uploaded, remote_state=None):
@@ -121,11 +122,19 @@ index 00000000..f58bf492
 +
 +def test_remote_copy_with_other_size_or_mtime_is_uploaded(tmp_path):
 +    files = host_files(tmp_path, 2)
-+    size, mtime = stat_of(files[0][0])
-+    remote = {files[0][1]: (size, mtime - 5), files[1][1]: (size + 1, mtime)}
++    size, mtime, ctime = stat_of(files[0][0])
++    remote = {files[0][1]: (size, mtime - 5, ctime), files[1][1]: (size + 1, mtime, ctime)}
 +    uploaded = []
 +    manager_for(files, uploaded, lambda paths: remote).sync(force=True)
 +    assert sorted(uploaded) == sorted(remote)
++
++
++def test_host_file_replaced_after_the_remote_copy_is_uploaded(tmp_path):
++    files = host_files(tmp_path, 1)
++    host, remote_path = files[0]
++    uploaded = []
++    manager_for(files, uploaded, lambda paths: {remote_path: stat_of(host, written_after=-60.0)}).sync(force=True)
++    assert uploaded == [remote_path]
 +
 +
 +def test_unavailable_remote_state_uploads_every_file(tmp_path):
@@ -177,11 +186,13 @@ index 00000000..f58bf492
 +    (base / "a.md").write_text("abc")
 +    (base / "link.md").symlink_to("a.md")
 +    state = shell_environment._ssh_remote_state([str(base / name) for name in ("a.md", "link.md", "missing.md")])
-+    assert state == {str(base / "a.md"): (3, int((base / "a.md").stat().st_mtime))}
++    info = (base / "a.md").stat()
++    assert state == {str(base / "a.md"): (3, int(info.st_mtime), info.st_ctime)}
 +
 +
 +@pytest.mark.platforms("linux")
-+def test_second_environment_adopts_what_the_first_uploaded(shell_environment, tmp_path):
++def test_second_environment_adopts_what_the_first_uploaded(shell_environment, tmp_path, monkeypatch):
++    monkeypatch.setattr(file_sync, "_ADOPT_CLOCK_MARGIN_S", 0.0)
 +    base = Path(shell_environment._remote_home) / ".hermes"
 +    files = [(host, remote.replace("/remote/.hermes", str(base))) for host, remote in host_files(tmp_path, 3)]
 +    for _, remote in files:
@@ -203,6 +214,8 @@ index 00000000..f58bf492
 +@pytest.mark.platforms("posix")
 +def test_mapped_return_leaves_out_files_unchanged_since_sync(shell_environment, tmp_path, monkeypatch):
 +    from hermes_cli import config
++
++    monkeypatch.setattr(file_sync, "_ADOPT_CLOCK_MARGIN_S", 0.0)
 +
 +    base = Path(shell_environment._remote_home) / ".hermes"
 +    (base / "skills").mkdir()
@@ -520,7 +533,7 @@ index 00000000..a4b7c779
 +    assert (home / "skills/directory/private.txt").read_text() == "external fixture must not be copied"
 +    assert (remote / "skills/directory").is_symlink()
 diff --git a/tools/environments/file_sync.py b/tools/environments/file_sync.py
-index 08f385d0..c929cdba 100644
+index 08f385d0..9a02f3b3 100644
 --- a/tools/environments/file_sync.py
 +++ b/tools/environments/file_sync.py
 @@ -22,7 +22,7 @@ try:
@@ -532,25 +545,33 @@ index 08f385d0..c929cdba 100644
  
  import psutil
  
-@@ -47,6 +47,11 @@ BulkUploadFn = Callable[[list[tuple[str, str]]], None]  # [(host_path, remote_pa
+@@ -47,6 +47,14 @@ BulkUploadFn = Callable[[list[tuple[str, str]]], None]  # [(host_path, remote_pa
  BulkDownloadFn = Callable[[Path], None]  # (dest_tar_path) -> writes tar archive, raises on failure
  DeleteFn = Callable[[list[str]], None]  # (remote_paths) -> raises on failure
  GetFilesFn = Callable[[], list[tuple[str, str]]]  # () -> [(host_path, remote_path), ...]
-+# (remote_paths) -> {remote_path: (size, mtime)} for those that exist as regular files
-+RemoteStateFn = Callable[[list[str]], dict[str, tuple[int, int]]]
++# (remote_paths) -> {remote_path: (size, mtime, ctime)} for those that exist as regular files
++RemoteStateFn = Callable[[list[str]], dict[str, tuple[int, int, float]]]
 +
 +_UPLOAD_BATCH_FILES = 500
 +_UPLOAD_BATCH_BYTES = 64 * 1024 * 1024
++# A copy can keep size and mtime but always sets ctime, so a host file replaced after the remote
++# copy was written is still uploaded. The margin absorbs clock skew between the two hosts.
++_ADOPT_CLOCK_MARGIN_S = 2.0
  
  _SYNC_BACK_MAX_RETRIES = 3
  _SYNC_BACK_BACKOFF = (2, 4, 8)  # seconds between retries
-@@ -185,10 +190,39 @@ def _sha256_file(path: str) -> str:
+@@ -185,10 +193,44 @@ def _sha256_file(path: str) -> str:
      return h.hexdigest()
  
  
-+def _sha256_if_unchanged(path: str, key: tuple[float, int]) -> str | None:
-+    """Digest of *path* when its ``(mtime, size)`` is still *key* after reading, else None."""
++def _remote_copy_current(path: str, key: tuple[float, int], remote: tuple[int, int, float] | None) -> str | None:
++    """Digest of host *path* when the remote copy described by *remote* holds the same bytes:
++    same size and mtime, and the host file unchanged since that copy was written."""
++    if remote is None or remote[:2] != (key[1], int(key[0])):
++        return None
 +    try:
++        if os.stat(path).st_ctime + _ADOPT_CLOCK_MARGIN_S >= remote[2]:
++            return None
 +        digest = _sha256_file(path)
 +    except OSError:
 +        return None
@@ -585,7 +606,7 @@ index 08f385d0..c929cdba 100644
  
      def __init__(
          self,
-@@ -197,24 +231,28 @@ class FileSyncManager:
+@@ -197,24 +239,28 @@ class FileSyncManager:
          delete_fn: DeleteFn,
          sync_interval: float = _SYNC_INTERVAL_SECONDS,
          bulk_upload_fn: BulkUploadFn | None = None,
@@ -618,7 +639,7 @@ index 08f385d0..c929cdba 100644
          with self._transaction_lock:
              self._sync_transaction(force=force)
  
-@@ -229,38 +267,81 @@ class FileSyncManager:
+@@ -229,38 +275,81 @@ class FileSyncManager:
          current_files = self._get_files_fn()
          self._upload_only_host_paths.update(_credential_host_paths())
          to_upload, new_files, to_delete = self._plan_sync(current_files)
@@ -692,8 +713,8 @@ index 08f385d0..c929cdba 100644
 +    def _adopt_remote_copies(
 +        self, to_upload: list[tuple[str, str]], new_files: dict[str, tuple[float, int]],
 +    ) -> list[tuple[str, str]]:
-+        """Count files the remote already holds with the same size and mtime as synced, so a new
-+        environment on a persistent host uploads only what differs. Returns the rest."""
++        """Count files the remote already holds as synced, so a new environment on a persistent
++        host uploads only what differs. Returns the rest."""
 +        try:
 +            remote = self._remote_state_fn([remote_path for _, remote_path in to_upload])
 +        except Exception as exc:
@@ -703,13 +724,13 @@ index 08f385d0..c929cdba 100644
 +        for host_path, remote_path in to_upload:
 +            key = new_files[remote_path]
 +            seen = remote.get(remote_path)
-+            digest = _sha256_if_unchanged(host_path, key) if seen == (key[1], int(key[0])) else None
++            digest = _remote_copy_current(host_path, key, seen)
 +            if digest is None:
 +                pending.append((host_path, remote_path))
 +                continue
 +            self._synced_files[remote_path] = key
 +            self._pushed_hashes[remote_path] = digest
-+            self._remote_stats[remote_path] = seen
++            self._remote_stats[remote_path] = seen[:2]
 +        if len(pending) < len(to_upload):
 +            logger.info("file_sync: %d file(s) already on the remote, %d to upload",
 +                        len(to_upload) - len(pending), len(pending))
@@ -722,7 +743,7 @@ index 08f385d0..c929cdba 100644
  
      def _plan_sync(
          self, current_files: list[tuple[str, str]]
-@@ -375,6 +456,28 @@ class FileSyncManager:
+@@ -375,6 +464,28 @@ class FileSyncManager:
                  pass
              lock_fd.close()
  
@@ -751,7 +772,7 @@ index 08f385d0..c929cdba 100644
      def _sync_back_impl(self) -> None:
          """Download, diff, and apply remote changes to host."""
          if self._bulk_download_fn is None:
-@@ -395,7 +498,11 @@ class FileSyncManager:
+@@ -395,7 +506,11 @@ class FileSyncManager:
          fd, tar_path = tempfile.mkstemp(prefix=_sync_back_temp_prefix(), suffix=".tar")
          os.close(fd)
          try:
@@ -765,7 +786,7 @@ index 08f385d0..c929cdba 100644
              # A misbehaving sandbox could produce an arbitrarily large tar.
              try:
 diff --git a/tools/environments/ssh.py b/tools/environments/ssh.py
-index 1ece284e..b3ad9019 100644
+index 1ece284e..86e4e65f 100644
 --- a/tools/environments/ssh.py
 +++ b/tools/environments/ssh.py
 @@ -2,6 +2,7 @@
@@ -944,7 +965,7 @@ index 1ece284e..b3ad9019 100644
 +        info = os.lstat(path)
 +    except OSError:
 +        return None
-+    return (path, [info.st_size, int(info.st_mtime)]) if stat.S_ISREG(info.st_mode) else None
++    return (path, [info.st_size, int(info.st_mtime), info.st_ctime]) if stat.S_ISREG(info.st_mode) else None
 +
 +with ThreadPoolExecutor(16) as pool:
 +    found = [item for item in pool.map(state, json.load(sys.stdin), chunksize=64) if item]
@@ -1084,19 +1105,20 @@ index 1ece284e..b3ad9019 100644
          if result.returncode != 0:
              stderr = result.stderr.decode(errors="replace").strip()
              # A socket not named *.sock is the only rc=2 we knowingly accept, and only when
-@@ -268,9 +488,19 @@ class SSHEnvironment(BaseEnvironment):
+@@ -268,9 +488,20 @@ class SSHEnvironment(BaseEnvironment):
                  raise _sync_error(f"SSH bulk download failed: {stderr}",
                                    f"File sync from {self.host}")
  
-+    def _ssh_remote_state(self, remote_paths: list[str]) -> dict[str, tuple[int, int]]:
-+        """``remote_path -> (size, mtime)`` for the given paths that exist as regular files."""
++    def _ssh_remote_state(self, remote_paths: list[str]) -> dict[str, tuple[int, int, float]]:
++        """``remote_path -> (size, mtime, ctime)`` for the given paths that exist as regular files."""
 +        command = self._build_ssh_command() + ["python3 -c " + shlex.quote(_REMOTE_STATE_SCRIPT)]
 +        result = subprocess.run(command, input=json.dumps(remote_paths).encode(), capture_output=True,
 +                                timeout=60, check=False)
 +        if result.returncode != 0:
 +            raise _sync_error(f"remote file state failed: {result.stderr.decode(errors='replace').strip()}",
 +                              f"File state on {self.host}")
-+        return {path: (int(size), int(mtime)) for path, (size, mtime) in json.loads(result.stdout).items()}
++        return {path: (int(size), int(mtime), float(ctime))
++                for path, (size, mtime, ctime) in json.loads(result.stdout).items()}
 +
      def _ssh_delete(self, remote_paths: list[str]) -> None:
 -        self._run_ssh_checked(quoted_rm_command(remote_paths), 10, "remote rm failed",
@@ -1106,7 +1128,7 @@ index 1ece284e..b3ad9019 100644
  
      def _before_execute(self) -> None:
          if self._sync_manager is not None:
-@@ -291,7 +521,8 @@ class SSHEnvironment(BaseEnvironment):
+@@ -291,7 +522,8 @@ class SSHEnvironment(BaseEnvironment):
      def cleanup(self):
          if self._sync_manager:
              logger.info("SSH: syncing files from sandbox...")
