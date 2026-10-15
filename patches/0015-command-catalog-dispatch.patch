@@ -77,10 +77,9 @@ diff --git a/tui_gateway/server.py b/tui_gateway/server.py
 index 08418121..2766e803 100644
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
-@@ -194,7 +194,7 @@ _LONG_HANDLERS = frozenset({
+@@ -194,6 +194,6 @@ _LONG_HANDLERS = frozenset({
      "session.resume", "session.save", "session.workspace.move", "shell.exec", "skills.manage", "slash.exec",
-     "onboarding.ensure_setup_profile", "onboarding.ensure_setup_session", "onboarding.reset_setup_profile",
-     "session.start_chat",
+     "onboarding.start", "onboarding.state",
 -    "session.context_breakdown", "subagent.list", "pet.info.meta",
 +    "session.context_breakdown", "subagent.list", "pet.info.meta", "commands.catalog",
      "session.control.read",  # WAL snapshot read; keep shared-DB contention off the WS dispatcher

@@ -343,17 +343,17 @@ index 3c7b1b5b..3504a640 100644
    'model.save_key': { params: ModelSaveKeyParams; result: ModelSaveKeyResult }
 +  /** Read cached subscription usage for configured custom providers without probing model catalogs. */
 +  'model.usage': { params: ModelUsageParams; result: ModelUsageResult }
-   /** Create-or-read the backend-owned setup profile; the backend picks the name. */
-   'onboarding.ensure_setup_profile': { params: Params; result: OnboardingEnsureSetupProfileResult }
-   'onboarding.ensure_setup_session': { params: OnboardingEnsureSetupSessionParams; result: OnboardingEnsureSetupSessionResult }
+   /** Write onboarding.run in the root profile's config.yaml; answers the new state. */
+   'onboarding.set_run': { params: OnboardingSetRunParams; result: OnboardingRunStateResult }
+   /** Skip setup: end the session's onboarding run and close the card that waits. */
 @@ -5622,6 +5632,7 @@ export const RPC_METHODS = [
    'model.disconnect',
    'model.options',
    'model.save_key',
 +  'model.usage',
-   'onboarding.ensure_setup_profile',
-   'onboarding.ensure_setup_session',
-   'onboarding.mark_seen',
+   'onboarding.set_run',
+   'onboarding.skip',
+   'onboarding.start',
 diff --git a/apps/shared/src/gateway-contract.openrpc.json b/apps/shared/src/gateway-contract.openrpc.json
 index fe5067d6..7d823b35 100644
 --- a/apps/shared/src/gateway-contract.openrpc.json
@@ -381,8 +381,8 @@ index fe5067d6..7d823b35 100644
 +      }
 +    },
      {
-       "name": "onboarding.ensure_setup_profile",
-       "summary": "Create-or-read the backend-owned setup profile; the backend picks the name.",
+       "name": "onboarding.set_run",
+       "summary": "Write onboarding.run in the root profile's config.yaml; answers the new state.",
 @@ -19385,6 +19403,18 @@
              "title": "Models",
              "type": "array"
