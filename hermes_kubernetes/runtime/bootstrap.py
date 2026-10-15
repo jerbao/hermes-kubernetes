@@ -182,6 +182,9 @@ def main():
     from hermes_kubernetes.runtime.dependencies import prepare_store
 
     os.environ["HERMES_RUNTIME_DIR"] = str(prepare_store(home))
+    from hermes_kubernetes.runtime.dependency_generation import reconcile as reconcile_dependencies
+
+    reconcile_dependencies()
     from hermes_cli._launchers import runtime_command
 
     args = []
