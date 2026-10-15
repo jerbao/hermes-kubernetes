@@ -230,6 +230,37 @@
         "tests/tools/test_skill_catalog_cache_scopes.py",
         "tests/tools/test_skills_tool.py"
       ]
+    },
+    {
+      "path": "patches/0017-display-order-after-prompt-rewrite.patch",
+      "description": "Restore the display sort key after a prompt rewrite and keep NULL groups in display pages",
+      "files": [
+        "hermes_state_messages.py",
+        "tests/hermes_state/test_display_order_after_user_content_rewrite.py"
+      ],
+      "native_tests": [
+        "tests/hermes_state/test_display_order_after_user_content_rewrite.py",
+        "tests/hermes_state/test_get_messages_include_compacted.py",
+        "tests/hermes_state/test_display_split_heal.py",
+        "tests/hermes_state/test_display_projection_parity.py",
+        "tests/hermes_state/test_display_dedupe_pruned_tool_payload.py",
+        "tests/tui_gateway/test_submit_row_session_target.py"
+      ]
+    },
+    {
+      "path": "patches/0018-skill-frontmatter-cache.patch",
+      "description": "Parse each distinct skill frontmatter once per process",
+      "files": [
+        "agent/skill_utils.py",
+        "tests/agent/test_skill_frontmatter_cache.py"
+      ],
+      "native_tests": [
+        "tests/agent/test_skill_frontmatter_cache.py",
+        "tests/agent/test_skill_utils.py",
+        "tests/agent/test_skill_commands.py",
+        "tests/tools/test_skills_tool.py",
+        "tests/tools/test_skills_tool_discovery_cache.py"
+      ]
     }
   ]
 }

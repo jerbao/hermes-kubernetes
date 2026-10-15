@@ -1,0 +1,121 @@
+diff --git a/agent/skill_utils.py b/agent/skill_utils.py
+index eebbeb15..3f8575c2 100644
+--- a/agent/skill_utils.py
++++ b/agent/skill_utils.py
+@@ -2,11 +2,13 @@
+ Import-light by design: no tool registry, CLI config, or provider resolution."""
+ 
+ import ast
++import copy
+ import hashlib
+ import logging
+ import os
+ import re
+ import sys
++import threading
+ from pathlib import Path, PurePath
+ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+ 
+@@ -63,6 +65,27 @@ def yaml_load(content: str):
+     return _yaml_load_fn(content)
+ 
+ 
++# Skill discovery and the slash-command scan each parse every SKILL.md frontmatter, again after
++# each cache expiry, and the pure-Python parser (the only one on 3.14 without ruamel.yaml.clib)
++# takes milliseconds per document. Keyed by the YAML text itself, an entry can never be stale.
++_FRONTMATTER_CACHE: dict[str, Any] = {}
++_FRONTMATTER_CACHE_MAX = 4096
++_frontmatter_cache_lock = threading.Lock()
++
++
++def _cached_frontmatter_yaml(yaml_content: str) -> Any:
++    """``yaml_load(yaml_content)``, reusing an earlier parse of the same text; returns a fresh copy."""
++    with _frontmatter_cache_lock:
++        cached = _FRONTMATTER_CACHE.get(yaml_content, _FRONTMATTER_CACHE)
++    if cached is _FRONTMATTER_CACHE:
++        cached = yaml_load(yaml_content)
++        with _frontmatter_cache_lock:
++            if len(_FRONTMATTER_CACHE) >= _FRONTMATTER_CACHE_MAX:
++                _FRONTMATTER_CACHE.pop(next(iter(_FRONTMATTER_CACHE)))
++            _FRONTMATTER_CACHE[yaml_content] = cached
++    return copy.deepcopy(cached)
++
++
+ def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
+     """Parse YAML frontmatter from markdown; returns (frontmatter_dict, body).
+     Malformed YAML falls back to key:value line splitting. A leading UTF-8 BOM
+@@ -75,7 +98,7 @@ def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
+     body = content[end_match.end() + 3 :]
+     frontmatter: dict[str, Any] = {}
+     try:
+-        parsed = yaml_load(yaml_content)
++        parsed = _cached_frontmatter_yaml(yaml_content)
+         if isinstance(parsed, dict):
+             frontmatter = parsed
+     except Exception:
+diff --git a/tests/agent/test_skill_frontmatter_cache.py b/tests/agent/test_skill_frontmatter_cache.py
+new file mode 100644
+index 00000000..83b723d7
+--- /dev/null
++++ b/tests/agent/test_skill_frontmatter_cache.py
+@@ -0,0 +1,60 @@
++"""Frontmatter YAML is parsed once per distinct text, and callers never share the parsed objects."""
++import pytest
++
++from agent import skill_utils
++from agent.skill_utils import parse_frontmatter
++
++
++@pytest.fixture(autouse=True)
++def counted_loads(monkeypatch):
++    monkeypatch.setattr(skill_utils, "_FRONTMATTER_CACHE", {})
++    calls = []
++    real = skill_utils.yaml_load
++
++    def counting(text):
++        calls.append(text)
++        return real(text)
++
++    monkeypatch.setattr(skill_utils, "yaml_load", counting)
++    return calls
++
++
++def skill(name, tags=("a",)):
++    return f"---\nname: {name}\ntags: [{', '.join(tags)}]\n---\nbody of {name}\n"
++
++
++def test_same_frontmatter_is_parsed_once(counted_loads):
++    first, body = parse_frontmatter(skill("alpha"))
++    second, _ = parse_frontmatter(skill("alpha"))
++    assert first == second == {"name": "alpha", "tags": ["a"]}
++    assert body == "body of alpha\n"
++    assert len(counted_loads) == 1
++
++
++def test_callers_get_independent_copies():
++    first, _ = parse_frontmatter(skill("alpha"))
++    first["tags"].append("mutated")
++    second, _ = parse_frontmatter(skill("alpha"))
++    assert second["tags"] == ["a"]
++
++
++def test_changed_frontmatter_is_parsed_again(counted_loads):
++    parse_frontmatter(skill("alpha"))
++    edited, _ = parse_frontmatter(skill("alpha", tags=("a", "b")))
++    assert edited["tags"] == ["a", "b"]
++    assert len(counted_loads) == 2
++
++
++def test_malformed_yaml_is_not_cached_and_still_falls_back(counted_loads):
++    text = "---\nname: broken\ndescription: [unclosed\n---\nbody\n"
++    for _ in range(2):
++        frontmatter, _ = parse_frontmatter(text)
++        assert frontmatter["name"] == "broken"
++    assert len(counted_loads) == 2
++
++
++def test_cache_is_bounded(monkeypatch):
++    monkeypatch.setattr(skill_utils, "_FRONTMATTER_CACHE_MAX", 2)
++    for name in ("a", "b", "c"):
++        parse_frontmatter(skill(name))
++    assert len(skill_utils._FRONTMATTER_CACHE) == 2

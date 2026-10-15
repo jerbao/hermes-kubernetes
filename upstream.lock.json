@@ -149,6 +149,31 @@
         "tests/tools/test_skills_tool.py"
       ],
       "sha256": "94ac09d2a13c8e79aaa9feb7c7a23d8f4916e0341df159ac27b93d6e31f5f3f2"
+    },
+    {
+      "path": "patches/0017-display-order-after-prompt-rewrite.patch",
+      "sha256": "daf054fcdeea024fe4efad55d8e9da904ce97469c6985f553d1c8e3d447000c5",
+      "description": "Restore the display sort key after a prompt rewrite and keep NULL groups in display pages",
+      "native_tests": [
+        "tests/hermes_state/test_display_order_after_user_content_rewrite.py",
+        "tests/hermes_state/test_get_messages_include_compacted.py",
+        "tests/hermes_state/test_display_split_heal.py",
+        "tests/hermes_state/test_display_projection_parity.py",
+        "tests/hermes_state/test_display_dedupe_pruned_tool_payload.py",
+        "tests/tui_gateway/test_submit_row_session_target.py"
+      ]
+    },
+    {
+      "path": "patches/0018-skill-frontmatter-cache.patch",
+      "sha256": "01c8e263fe7124b20810b2a43fd3afebe9a95dba21afb6620544bfda9efa6399",
+      "description": "Parse each distinct skill frontmatter once per process",
+      "native_tests": [
+        "tests/agent/test_skill_frontmatter_cache.py",
+        "tests/agent/test_skill_utils.py",
+        "tests/agent/test_skill_commands.py",
+        "tests/tools/test_skills_tool.py",
+        "tests/tools/test_skills_tool_discovery_cache.py"
+      ]
     }
   ],
   "native_tests": [
@@ -179,6 +204,16 @@
     "tests/hermes_state/test_session_db_read_conn_pool.py",
     "tests/tui_gateway/test_command_description_fidelity.py",
     "tests/tools/test_skill_catalog_cache_scopes.py",
-    "tests/tools/test_skills_tool.py"
+    "tests/tools/test_skills_tool.py",
+    "tests/hermes_state/test_display_order_after_user_content_rewrite.py",
+    "tests/hermes_state/test_get_messages_include_compacted.py",
+    "tests/hermes_state/test_display_split_heal.py",
+    "tests/hermes_state/test_display_projection_parity.py",
+    "tests/hermes_state/test_display_dedupe_pruned_tool_payload.py",
+    "tests/tui_gateway/test_submit_row_session_target.py",
+    "tests/agent/test_skill_frontmatter_cache.py",
+    "tests/agent/test_skill_utils.py",
+    "tests/agent/test_skill_commands.py",
+    "tests/tools/test_skills_tool_discovery_cache.py"
   ]
 }
