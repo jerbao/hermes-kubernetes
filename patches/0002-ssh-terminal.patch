@@ -61,6 +61,200 @@ index 00000000..a1e89119
 +    shell_environment._ssh_delete(destinations)
 +    assert all(not Path(p).exists() for p in destinations)
 +    assert retained.read_bytes() == b'keep'
+diff --git a/tests/tools/test_ssh_incremental_sync.py b/tests/tools/test_ssh_incremental_sync.py
+new file mode 100644
+index 00000000..f58bf492
+--- /dev/null
++++ b/tests/tools/test_ssh_incremental_sync.py
+@@ -0,0 +1,188 @@
++"""A new environment on a persistent host uploads only what the host lacks, and keeps progress."""
++import hashlib
++import os
++import subprocess
++import tarfile
++from pathlib import Path
++
++import pytest
++
++from tools.environments import file_sync
++from tools.environments.file_sync import FileSyncManager
++from tools.environments.ssh import SSHEnvironment
++
++
++def host_files(tmp_path, count):
++    files = []
++    for index in range(count):
++        path = tmp_path / "home" / "skills" / f"s{index}" / "SKILL.md"
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text(f"skill {index}")
++        files.append((str(path), f"/remote/.hermes/skills/s{index}/SKILL.md"))
++    return files
++
++
++def stat_of(host_path):
++    info = os.stat(host_path)
++    return info.st_size, int(info.st_mtime)
++
++
++def manager_for(files, uploaded, remote_state=None):
++    return FileSyncManager(get_files_fn=lambda: files, upload_fn=lambda *args: None, delete_fn=lambda paths: None,
++                           bulk_upload_fn=lambda batch: uploaded.extend(remote for _, remote in batch),
++                           remote_state_fn=remote_state)
++
++
++def test_new_environment_uploads_only_files_the_remote_lacks(tmp_path):
++    files = host_files(tmp_path, 3)
++    remote = {remote: stat_of(host) for host, remote in files[:2]}
++    uploaded = []
++    manager = manager_for(files, uploaded, lambda paths: {p: remote[p] for p in paths if p in remote})
++
++    manager.sync(force=True)
++
++    assert uploaded == [files[2][1]]
++    host, remote_path = files[0]
++    assert manager._pushed_hashes[remote_path] == hashlib.sha256(Path(host).read_bytes()).hexdigest()
++    assert set(manager.remote_file_state()) == {remote for _, remote in files}
++    uploaded.clear()
++    manager.sync(force=True)
++    assert uploaded == []
++
++
++def test_remote_copy_with_other_size_or_mtime_is_uploaded(tmp_path):
++    files = host_files(tmp_path, 2)
++    size, mtime = stat_of(files[0][0])
++    remote = {files[0][1]: (size, mtime - 5), files[1][1]: (size + 1, mtime)}
++    uploaded = []
++    manager_for(files, uploaded, lambda paths: remote).sync(force=True)
++    assert sorted(uploaded) == sorted(remote)
++
++
++def test_unavailable_remote_state_uploads_every_file(tmp_path):
++    files = host_files(tmp_path, 2)
++    uploaded = []
++
++    def broken(paths):
++        raise RuntimeError("python3: command not found")
++
++    manager_for(files, uploaded, broken).sync(force=True)
++    assert len(uploaded) == 2
++
++
++def test_failed_batch_keeps_earlier_batches(tmp_path, monkeypatch):
++    monkeypatch.setattr(file_sync, "_UPLOAD_BATCH_FILES", 2)
++    files = host_files(tmp_path, 5)
++    sent, failures = [], [RuntimeError("SSH bulk upload timed out")]
++
++    def flaky(batch):
++        if len(sent) == 4 and failures:
++            raise failures.pop()
++        sent.extend(remote for _, remote in batch)
++
++    manager = FileSyncManager(get_files_fn=lambda: files, upload_fn=lambda *args: None,
++                              delete_fn=lambda paths: None, bulk_upload_fn=flaky)
++    manager.sync(force=True)
++    assert len(sent) == 4
++
++    manager.sync(force=True)
++    assert sent[4:] == [files[4][1]]
++
++
++@pytest.fixture
++def shell_environment(tmp_path):
++    remote_home = tmp_path / "remote"
++    (remote_home / ".hermes").mkdir(parents=True)
++    environment = SSHEnvironment.__new__(SSHEnvironment)
++    environment.host = "local-test"
++    environment._remote_home = str(remote_home)
++    environment._build_ssh_command = lambda *args, **kwargs: ["bash", "-c"]
++    environment._run_ssh = lambda command, timeout: subprocess.run(
++        ["bash", "-c", command], timeout=timeout, capture_output=True, text=True)
++    return environment
++
++
++@pytest.mark.platforms("posix")
++def test_remote_state_lists_only_existing_regular_files(shell_environment):
++    base = Path(shell_environment._remote_home) / ".hermes"
++    (base / "a.md").write_text("abc")
++    (base / "link.md").symlink_to("a.md")
++    state = shell_environment._ssh_remote_state([str(base / name) for name in ("a.md", "link.md", "missing.md")])
++    assert state == {str(base / "a.md"): (3, int((base / "a.md").stat().st_mtime))}
++
++
++@pytest.mark.platforms("linux")
++def test_second_environment_adopts_what_the_first_uploaded(shell_environment, tmp_path):
++    base = Path(shell_environment._remote_home) / ".hermes"
++    files = [(host, remote.replace("/remote/.hermes", str(base))) for host, remote in host_files(tmp_path, 3)]
++    for _, remote in files:
++        assert not Path(remote).exists()
++
++    def environment_manager(upload):
++        return FileSyncManager(get_files_fn=lambda: files, upload_fn=lambda *args: None,
++                               delete_fn=lambda paths: None, bulk_upload_fn=upload,
++                               remote_state_fn=shell_environment._ssh_remote_state)
++
++    environment_manager(shell_environment._ssh_bulk_upload).sync(force=True)
++    assert all(Path(remote).read_bytes() == Path(host).read_bytes() for host, remote in files)
++
++    uploaded = []
++    environment_manager(lambda batch: uploaded.extend(batch)).sync(force=True)
++    assert uploaded == []
++
++
++@pytest.mark.platforms("posix")
++def test_mapped_return_leaves_out_files_unchanged_since_sync(shell_environment, tmp_path, monkeypatch):
++    from hermes_cli import config
++
++    base = Path(shell_environment._remote_home) / ".hermes"
++    (base / "skills").mkdir()
++    home = tmp_path / "home"
++    (home / "skills").mkdir(parents=True)
++    mapping = []
++    for name in ("same.md", "edited.md"):
++        (home / "skills" / name).write_text("host " + name)
++        remote = base / "skills" / name
++        remote.write_text("host " + name)
++        info = (home / "skills" / name).stat()
++        os.utime(remote, ns=(info.st_atime_ns, info.st_mtime_ns))
++        mapping.append((str(home / "skills" / name), str(remote)))
++    manager = FileSyncManager(lambda: mapping, lambda *args: None, lambda *args: None,
++                              remote_state_fn=shell_environment._ssh_remote_state)
++    manager.sync(force=True)
++    shell_environment._sync_manager = manager
++    (base / "skills/edited.md").write_text("edited on the remote")
++    (base / "skills/new.md").write_text("created on the remote")
++    monkeypatch.setattr(config, "load_config_readonly", lambda: {"terminal": {"sync_back_scope": "mapped"}})
++
++    archive = tmp_path / "return.tar"
++    shell_environment._ssh_bulk_download(archive)
++
++    with tarfile.open(archive) as tar:
++        names = {Path(member.name).name for member in tar if member.isfile()}
++    assert names == {"edited.md", "new.md"}
++
++
++@pytest.mark.platforms("posix")
++def test_mapped_return_skips_skill_trees_the_upload_never_sends(shell_environment, tmp_path, monkeypatch):
++    from hermes_cli import config
++
++    base = Path(shell_environment._remote_home) / ".hermes"
++    for relative in ("skills/.curator_backups/old.tar.gz", "skills/.hub/lock.json",
++                     "skills/tool/node_modules/dep/index.js", "skills/tool/scripts/new.py", "cache/web/.git/page"):
++        (base / relative).parent.mkdir(parents=True, exist_ok=True)
++        (base / relative).write_text("remote")
++    home = tmp_path / "home"
++    for relative in ("skills/tool/SKILL.md", "cache/web/page.md"):
++        (home / relative).parent.mkdir(parents=True, exist_ok=True)
++        (home / relative).write_text("host")
++    mapping = [(str(home / r), str(base / r)) for r in ("skills/tool/SKILL.md", "cache/web/page.md")]
++    shell_environment._sync_manager = FileSyncManager(lambda: mapping, lambda *args: None, lambda *args: None)
++    monkeypatch.setattr(config, "load_config_readonly", lambda: {"terminal": {"sync_back_scope": "mapped"}})
++
++    archive = tmp_path / "return.tar"
++    shell_environment._ssh_bulk_download(archive)
++
++    with tarfile.open(archive) as tar:
++        names = {member.name.split(".hermes/", 1)[1] for member in tar if member.isfile()}
++    assert names == {"skills/tool/scripts/new.py", "cache/web/.git/page"}
 diff --git a/tests/tools/test_ssh_profile_sync.py b/tests/tools/test_ssh_profile_sync.py
 new file mode 100644
 index 00000000..c7034ba4
@@ -326,18 +520,209 @@ index 00000000..a4b7c779
 +    assert (home / "skills/directory/private.txt").read_text() == "external fixture must not be copied"
 +    assert (remote / "skills/directory").is_symlink()
 diff --git a/tools/environments/file_sync.py b/tools/environments/file_sync.py
-index 5d12756c..21d2abec 100644
+index 08f385d0..c929cdba 100644
 --- a/tools/environments/file_sync.py
 +++ b/tools/environments/file_sync.py
-@@ -199,6 +199,7 @@ class FileSyncManager:
+@@ -22,7 +22,7 @@ try:
+ except ImportError:
+     fcntl = None  # Windows — file locking skipped
+ from pathlib import Path
+-from typing import Callable
++from typing import Callable, Iterator
+ 
+ import psutil
+ 
+@@ -47,6 +47,11 @@ BulkUploadFn = Callable[[list[tuple[str, str]]], None]  # [(host_path, remote_pa
+ BulkDownloadFn = Callable[[Path], None]  # (dest_tar_path) -> writes tar archive, raises on failure
+ DeleteFn = Callable[[list[str]], None]  # (remote_paths) -> raises on failure
+ GetFilesFn = Callable[[], list[tuple[str, str]]]  # () -> [(host_path, remote_path), ...]
++# (remote_paths) -> {remote_path: (size, mtime)} for those that exist as regular files
++RemoteStateFn = Callable[[list[str]], dict[str, tuple[int, int]]]
++
++_UPLOAD_BATCH_FILES = 500
++_UPLOAD_BATCH_BYTES = 64 * 1024 * 1024
+ 
+ _SYNC_BACK_MAX_RETRIES = 3
+ _SYNC_BACK_BACKOFF = (2, 4, 8)  # seconds between retries
+@@ -185,10 +190,39 @@ def _sha256_file(path: str) -> str:
+     return h.hexdigest()
+ 
+ 
++def _sha256_if_unchanged(path: str, key: tuple[float, int]) -> str | None:
++    """Digest of *path* when its ``(mtime, size)`` is still *key* after reading, else None."""
++    try:
++        digest = _sha256_file(path)
++    except OSError:
++        return None
++    return digest if _file_mtime_key(path) == key else None
++
++
++def _upload_batches(files: list[tuple[str, str]]) -> Iterator[list[tuple[str, str]]]:
++    """Split an upload so each transfer stays well inside the backend timeout (120 s over SSH):
++    a remote filesystem that takes ~20 ms per created file, such as CephFS through FUSE, still
++    writes a full batch in about ten seconds."""
++    batch: list[tuple[str, str]] = []
++    size = 0
++    for host_path, remote_path in files:
++        try:
++            length = os.path.getsize(host_path)
++        except OSError:
++            length = 0
++        if batch and (len(batch) >= _UPLOAD_BATCH_FILES or size + length > _UPLOAD_BATCH_BYTES):
++            yield batch
++            batch, size = [], 0
++        batch.append((host_path, remote_path))
++        size += length
++    if batch:
++        yield batch
++
++
+ class FileSyncManager:
+     """Tracks local file changes and syncs to a remote environment. Backends supply transport
+     callbacks (upload, delete) and a file-source callable; the manager handles mtime-based
+-    change detection, deletion tracking, rate limiting, and transactional state."""
++    change detection, deletion tracking, rate limiting, and per-batch committed state."""
+ 
+     def __init__(
+         self,
+@@ -197,24 +231,28 @@ class FileSyncManager:
+         delete_fn: DeleteFn,
+         sync_interval: float = _SYNC_INTERVAL_SECONDS,
          bulk_upload_fn: BulkUploadFn | None = None,
-         bulk_download_fn: BulkDownloadFn | None = None):
+-        bulk_download_fn: BulkDownloadFn | None = None):
++        bulk_download_fn: BulkDownloadFn | None = None,
++        remote_state_fn: RemoteStateFn | None = None):
          self._get_files_fn = get_files_fn
 +        self._return_file_mapping = None
          self._upload_fn = upload_fn
          self._bulk_upload_fn = bulk_upload_fn
          self._bulk_download_fn = bulk_download_fn
-@@ -375,6 +376,28 @@ class FileSyncManager:
++        self._remote_state_fn = remote_state_fn
+         self._delete_fn = delete_fn
+         self._transaction_lock = threading.Lock()
+         self._synced_files: dict[str, tuple[float, int]] = {}  # remote_path -> (mtime, size)
+         self._pushed_hashes: dict[str, str] = {}  # remote_path -> sha256 hex digest
++        self._remote_stats: dict[str, tuple[int, int]] = {}  # remote_path -> (size, mtime) as synced
+         self._upload_only_host_paths: set[str] = set()
+         self._last_sync_time: float = 0.0  # monotonic; 0 ensures first sync runs
+         self._sync_interval = sync_interval
+ 
+     def sync(self, *, force: bool = False) -> None:
+         """Run a sync cycle: upload changed files, delete removed files. Rate-limited to once
+-        per ``sync_interval`` unless *force* or ``HERMES_FORCE_FILE_SYNC=1``. Transactional:
+-        state is committed only if ALL operations succeed; on failure it rolls back so the
+-        next cycle retries everything."""
++        per ``sync_interval`` unless *force* or ``HERMES_FORCE_FILE_SYNC=1``. Uploads commit
++        per batch, deletions after every upload; on failure the uncommitted part is retried
++        by the next cycle."""
+         with self._transaction_lock:
+             self._sync_transaction(force=force)
+ 
+@@ -229,38 +267,81 @@ class FileSyncManager:
+         current_files = self._get_files_fn()
+         self._upload_only_host_paths.update(_credential_host_paths())
+         to_upload, new_files, to_delete = self._plan_sync(current_files)
++        if to_upload and not self._synced_files and self._remote_state_fn is not None:
++            to_upload = self._adopt_remote_copies(to_upload, new_files)
+ 
+         if not to_upload and not to_delete:
+             self._last_sync_time = _monotonic()
+             return
+ 
+-        prev_files = dict(self._synced_files)
+-        prev_hashes = dict(self._pushed_hashes)
++        done = 0
+         try:
+-            # Hash and upload the same bytes: the original may be saved while
+-            # the transport is reading it or waiting for remote acknowledgement.
+-            with tempfile.TemporaryDirectory(prefix="hermes-sync-push-") as staging:
+-                staged_files = []
+-                pushed_hashes = {}
+-                for index, (host_path, remote_path) in enumerate(to_upload):
+-                    staged_path = os.path.join(staging, str(index))
+-                    shutil.copy2(host_path, staged_path)
+-                    pushed_hashes[remote_path] = _sha256_file(staged_path)
+-                    staged_files.append((staged_path, remote_path))
+-                self._push(staged_files, to_delete)
+-            # Commit (all succeeded).
+-            self._pushed_hashes.update(pushed_hashes)
+-            for p in to_delete:
+-                new_files.pop(p, None)
+-                self._pushed_hashes.pop(p, None)
+-            self._synced_files = new_files
++            for batch in _upload_batches(to_upload):
++                self._push_batch(batch, new_files)
++                done += len(batch)
++            if to_delete:
++                self._push([], to_delete)
++                for p in to_delete:
++                    self._synced_files.pop(p, None)
++                    self._pushed_hashes.pop(p, None)
++                    self._remote_stats.pop(p, None)
+             self._last_sync_time = _monotonic()
+         except Exception as exc:
+-            self._synced_files = prev_files
+-            self._pushed_hashes = prev_hashes
+             # Do NOT advance _last_sync_time: bumping the rate-limit clock on failure would
+             # suppress the retry for up to _sync_interval, contradicting the retry contract.
+-            logger.warning("file_sync: sync failed, rolled back state: %s", exc)
++            logger.warning("file_sync: sync failed after %d of %d file(s): %s", done, len(to_upload), exc)
++
++    def _push_batch(self, batch: list[tuple[str, str]], new_files: dict[str, tuple[float, int]]) -> None:
++        """Upload one batch and commit it."""
++        # Hash and upload the same bytes: the original may be saved while
++        # the transport is reading it or waiting for remote acknowledgement.
++        with tempfile.TemporaryDirectory(prefix="hermes-sync-push-") as staging:
++            staged_files = []
++            pushed_hashes = {}
++            staged_stats = {}
++            for index, (host_path, remote_path) in enumerate(batch):
++                staged_path = os.path.join(staging, str(index))
++                shutil.copy2(host_path, staged_path)
++                pushed_hashes[remote_path] = _sha256_file(staged_path)
++                info = os.stat(staged_path)
++                staged_stats[remote_path] = (info.st_size, int(info.st_mtime))
++                staged_files.append((staged_path, remote_path))
++            self._push(staged_files, [])
++        self._pushed_hashes.update(pushed_hashes)
++        self._remote_stats.update(staged_stats)
++        for remote_path in pushed_hashes:
++            self._synced_files[remote_path] = new_files[remote_path]
++
++    def _adopt_remote_copies(
++        self, to_upload: list[tuple[str, str]], new_files: dict[str, tuple[float, int]],
++    ) -> list[tuple[str, str]]:
++        """Count files the remote already holds with the same size and mtime as synced, so a new
++        environment on a persistent host uploads only what differs. Returns the rest."""
++        try:
++            remote = self._remote_state_fn([remote_path for _, remote_path in to_upload])
++        except Exception as exc:
++            logger.warning("file_sync: remote state unavailable, uploading every file: %s", exc)
++            return to_upload
++        pending = []
++        for host_path, remote_path in to_upload:
++            key = new_files[remote_path]
++            seen = remote.get(remote_path)
++            digest = _sha256_if_unchanged(host_path, key) if seen == (key[1], int(key[0])) else None
++            if digest is None:
++                pending.append((host_path, remote_path))
++                continue
++            self._synced_files[remote_path] = key
++            self._pushed_hashes[remote_path] = digest
++            self._remote_stats[remote_path] = seen
++        if len(pending) < len(to_upload):
++            logger.info("file_sync: %d file(s) already on the remote, %d to upload",
++                        len(to_upload) - len(pending), len(pending))
++        return pending
++
++    def remote_file_state(self) -> dict[str, list[int]]:
++        """``remote_path -> [size, mtime]`` as last synced, so a return transfer can leave out
++        files that have not changed on the remote."""
++        return {path: list(state) for path, state in self._remote_stats.items()}
+ 
+     def _plan_sync(
+         self, current_files: list[tuple[str, str]]
+@@ -375,6 +456,28 @@ class FileSyncManager:
                  pass
              lock_fd.close()
  
@@ -366,7 +751,7 @@ index 5d12756c..21d2abec 100644
      def _sync_back_impl(self) -> None:
          """Download, diff, and apply remote changes to host."""
          if self._bulk_download_fn is None:
-@@ -395,7 +418,11 @@ class FileSyncManager:
+@@ -395,7 +498,11 @@ class FileSyncManager:
          fd, tar_path = tempfile.mkstemp(prefix=_sync_back_temp_prefix(), suffix=".tar")
          os.close(fd)
          try:
@@ -380,7 +765,7 @@ index 5d12756c..21d2abec 100644
              # A misbehaving sandbox could produce an arbitrarily large tar.
              try:
 diff --git a/tools/environments/ssh.py b/tools/environments/ssh.py
-index 3a9f2907..d03d65c9 100644
+index 1ece284e..b3ad9019 100644
 --- a/tools/environments/ssh.py
 +++ b/tools/environments/ssh.py
 @@ -2,6 +2,7 @@
@@ -400,7 +785,7 @@ index 3a9f2907..d03d65c9 100644
  
  from tools.environments.base import BaseEnvironment, EnvironmentConnectionError
  from tools.environments.base_output import _popen_bash
-@@ -24,11 +25,86 @@ logger = logging.getLogger(__name__)
+@@ -24,11 +25,169 @@ logger = logging.getLogger(__name__)
  # fail the connection outright ('getsockname failed: Not a socket'). Skip multiplexing there.
  # Skip multiplexing there; each command pays a fresh connection but the backend works. See #73927.
  _SSH_MULTIPLEX = os.name != "nt"
@@ -416,12 +801,77 @@ index 3a9f2907..d03d65c9 100644
 +# the remote home; file links are checked by the unchanged extraction filter.
 +_MAPPED_RETURN_SCRIPT = r"""
 +import json, os, stat, sys, tarfile
++from concurrent.futures import ThreadPoolExecutor
 +
 +request = json.load(sys.stdin)
 +root = os.path.abspath(request["root"])
 +pending = [(path, path, False, (), False) for path in request["prefixes"]]
 +mapped = set(request["mapped_files"])
++known = request.get("known") or {}
++excluded = set(request.get("excluded_directories") or ())
++skill_roots = request.get("skill_roots") or []
 +members = {}
++infos = {}  # path -> lstat result, None when missing
++listings = {}  # directory -> child paths in scandir order
++
++def pruned(name, info):
++    # Bookkeeping and dependency trees inside skills are never uploaded, so never returned.
++    return (stat.S_ISDIR(info.st_mode) and os.path.basename(name) in excluded
++            and any(name.startswith(r + "/") for r in skill_roots))
++
++def lstat(path):
++    if path not in infos:
++        try:
++            infos[path] = os.lstat(path)
++        except FileNotFoundError:
++            infos[path] = None
++    return infos[path]
++
++def is_link(path):
++    try:
++        info = lstat(path)
++    except OSError:
++        return False
++    return info is not None and stat.S_ISLNK(info.st_mode)
++
++def listing(path):
++    if path not in listings:
++        with os.scandir(path) as entries:
++            listings[path] = [entry.path for entry in entries]
++    return listings[path]
++
++def read_directory(path):
++    # Errors are left uncached so the walk below meets them exactly where it used to.
++    try:
++        with os.scandir(path) as entries:
++            children = [entry.path for entry in entries]
++    except OSError:
++        return path, None, {}
++    found = {}
++    for child in children:
++        try:
++            found[child] = os.lstat(child)
++        except FileNotFoundError:
++            found[child] = None
++        except OSError:
++            pass
++    return path, children, found
++
++# On a network filesystem every stat and directory read waits for a round trip, so the plain
++# directory tree is read in parallel first; the walk below consults these answers.
++with ThreadPoolExecutor(16) as pool:
++    wave = [os.path.abspath(p) for p in request["prefixes"]]
++    wave = [p for p in wave if not is_link(p) and os.path.isdir(p)]
++    while wave:
++        following = []
++        for directory, children, found in pool.map(read_directory, wave):
++            if children is None:
++                continue
++            listings[directory] = children
++            infos.update(found)
++            following.extend(c for c, i in found.items()
++                             if i is not None and stat.S_ISDIR(i.st_mode) and not pruned(c, i))
++        wave = following
 +
 +def contained(path):
 +    return path == root or path.startswith(root + "/")
@@ -431,7 +881,7 @@ index 3a9f2907..d03d65c9 100644
 +    for component in ["", *os.path.relpath(path, root).split(os.sep)]:
 +        if component and component != ".":
 +            parent = os.path.join(parent, component)
-+        if os.path.islink(parent):
++        if is_link(parent):
 +            return parent
 +    return path
 +
@@ -444,9 +894,8 @@ index 3a9f2907..d03d65c9 100644
 +        path = name = first_link(path)
 +    if name in members or os.path.basename(name).endswith(".sock"):
 +        continue
-+    try:
-+        info = os.lstat(path)
-+    except FileNotFoundError:
++    info = lstat(path)
++    if info is None or pruned(name, info):
 +        continue
 +    if stat.S_ISLNK(info.st_mode) and os.path.isdir(path):
 +        # Native uploads ignore directory links. Return only branches explicitly
@@ -460,6 +909,8 @@ index 3a9f2907..d03d65c9 100644
 +            path = os.path.realpath(path)
 +            info = os.stat(path)
 +            materialized = True
++    if not dependency and stat.S_ISREG(info.st_mode) and known.get(name) == [info.st_size, int(info.st_mtime)]:
++        continue  # unchanged since the host synced it
 +    members[name] = path
 +    if stat.S_ISLNK(info.st_mode):
 +        target = os.readlink(path)
@@ -472,9 +923,8 @@ index 3a9f2907..d03d65c9 100644
 +        identity = (info.st_dev, info.st_ino)
 +        if identity in ancestry:
 +            raise RuntimeError("Mapped return contains a directory-link cycle")
-+        with os.scandir(path) as entries:
-+            pending.extend((entry.path, os.path.join(name, entry.name), dependency,
-+                            (*ancestry, identity), materialized) for entry in entries)
++        pending.extend((child, os.path.join(name, os.path.basename(child)), dependency,
++                        (*ancestry, identity), materialized) for child in listing(path))
 +
 +# Virtual member names stay in .hermes even when a mapped relative alias resolves
 +# elsewhere on the VM. File symlinks retain their type for the native data filter.
@@ -483,11 +933,29 @@ index 3a9f2907..d03d65c9 100644
 +        archive.add(path, arcname=name.lstrip("/"), recursive=False)
 +"""
 +
++# Answers which mapped files the remote already holds. Each stat on a network filesystem waits
++# for a metadata round trip, so they run in parallel.
++_REMOTE_STATE_SCRIPT = r"""
++import json, os, stat, sys
++from concurrent.futures import ThreadPoolExecutor
++
++def state(path):
++    try:
++        info = os.lstat(path)
++    except OSError:
++        return None
++    return (path, [info.st_size, int(info.st_mtime)]) if stat.S_ISREG(info.st_mode) else None
++
++with ThreadPoolExecutor(16) as pool:
++    found = [item for item in pool.map(state, json.load(sys.stdin), chunksize=64) if item]
++json.dump(dict(found), sys.stdout)
++"""
++
 +
  def _ensure_ssh_available() -> None:
      """Fail fast with a clear error when the SSH client is unavailable."""
      for tool in ("ssh", "scp"):
-@@ -78,11 +154,17 @@ class SSHEnvironment(BaseEnvironment):
+@@ -79,13 +238,20 @@ class SSHEnvironment(BaseEnvironment):
              return
          self._remote_home_detected = False
          self._remote_home = self._detect_remote_home()
@@ -504,9 +972,13 @@ index 3a9f2907..d03d65c9 100644
 -                get_files_fn=lambda: iter_sync_files(f"{self._remote_home}/.hermes"),
 +                get_files_fn=self._sync_file_mapping,
                  upload_fn=self._scp_upload, delete_fn=self._ssh_delete,
-                 bulk_upload_fn=self._ssh_bulk_upload, bulk_download_fn=self._ssh_bulk_download)
+-                bulk_upload_fn=self._ssh_bulk_upload, bulk_download_fn=self._ssh_bulk_download)
++                bulk_upload_fn=self._ssh_bulk_upload, bulk_download_fn=self._ssh_bulk_download,
++                remote_state_fn=self._ssh_remote_state)
              self._sync_manager.sync(force=True)
-@@ -134,6 +216,20 @@ class SSHEnvironment(BaseEnvironment):
+         self.init_session()
+ 
+@@ -135,6 +301,20 @@ class SSHEnvironment(BaseEnvironment):
          if result.returncode != 0:
              raise _sync_error(f"{reason}: {result.stderr.strip()}", subject)
  
@@ -527,7 +999,7 @@ index 3a9f2907..d03d65c9 100644
      def _establish_connection(self):
          try:
              result = self._run_ssh("echo 'SSH connection established'", timeout=15)
-@@ -160,9 +256,28 @@ class SSHEnvironment(BaseEnvironment):
+@@ -161,9 +341,28 @@ class SSHEnvironment(BaseEnvironment):
                  return result.stdout.strip()
          return "/root" if self.user == "root" else f"/home/{self.user}"
  
@@ -557,7 +1029,7 @@ index 3a9f2907..d03d65c9 100644
          self._run_ssh(quoted_mkdir_command([base, f"{base}/skills", f"{base}/credentials", f"{base}/cache"]),
                        timeout=10)
  
-@@ -180,11 +295,11 @@ class SSHEnvironment(BaseEnvironment):
+@@ -181,11 +380,11 @@ class SSHEnvironment(BaseEnvironment):
          connection to remote ``tar x``, after a single batched ``mkdir -p``."""
          if not files:
              return
@@ -572,7 +1044,7 @@ index 3a9f2907..d03d65c9 100644
  
          # Symlink staging avoids fragile GNU tar --transform rules. On Windows
          # without Developer Mode symlink creation raises OSError winerror 1314;
-@@ -247,14 +362,28 @@ class SSHEnvironment(BaseEnvironment):
+@@ -248,14 +447,35 @@ class SSHEnvironment(BaseEnvironment):
          """Download remote .hermes/ as a tar archive."""
          # Tar from / with the full path so archive entries keep absolute paths
          # (home/user/.hermes/skills/f.py), matching _pushed_hashes keys.
@@ -594,10 +1066,17 @@ index 3a9f2907..d03d65c9 100644
 +        if scope == "mapped":
 +            if self._sync_manager is None:
 +                raise RuntimeError("Mapped return requires the native file sync manager")
++            from agent.skill_utils import EXCLUDED_SKILL_DIRS
++
 +            command = "python3 -c " + shlex.quote(_MAPPED_RETURN_SCRIPT)
++            base = self._sync_base()
 +            transfer = {"input": json.dumps({"root": "/" + rel_base,
 +                         "prefixes": self._sync_manager.return_directory_prefixes(),
-+                         "mapped_files": self._sync_manager.return_remote_paths()}).encode()}
++                         "mapped_files": self._sync_manager.return_remote_paths(),
++                         "known": self._sync_manager.remote_file_state(),
++                         # the roots credential_files.iter_skills_files uploads to
++                         "skill_roots": [f"{base}/{label}" for label in ("skills", "external_skills", "project_skills")],
++                         "excluded_directories": sorted(EXCLUDED_SKILL_DIRS)}).encode()}
 +        ssh_cmd = self._build_ssh_command() + [command]
          with open(dest, "wb") as f:
 -            result = subprocess.run(ssh_cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.PIPE, timeout=120, check=False)
@@ -605,9 +1084,20 @@ index 3a9f2907..d03d65c9 100644
          if result.returncode != 0:
              stderr = result.stderr.decode(errors="replace").strip()
              # A socket not named *.sock is the only rc=2 we knowingly accept, and only when
-@@ -268,8 +397,8 @@ class SSHEnvironment(BaseEnvironment):
+@@ -268,9 +488,19 @@ class SSHEnvironment(BaseEnvironment):
+                 raise _sync_error(f"SSH bulk download failed: {stderr}",
                                    f"File sync from {self.host}")
  
++    def _ssh_remote_state(self, remote_paths: list[str]) -> dict[str, tuple[int, int]]:
++        """``remote_path -> (size, mtime)`` for the given paths that exist as regular files."""
++        command = self._build_ssh_command() + ["python3 -c " + shlex.quote(_REMOTE_STATE_SCRIPT)]
++        result = subprocess.run(command, input=json.dumps(remote_paths).encode(), capture_output=True,
++                                timeout=60, check=False)
++        if result.returncode != 0:
++            raise _sync_error(f"remote file state failed: {result.stderr.decode(errors='replace').strip()}",
++                              f"File state on {self.host}")
++        return {path: (int(size), int(mtime)) for path, (size, mtime) in json.loads(result.stdout).items()}
++
      def _ssh_delete(self, remote_paths: list[str]) -> None:
 -        self._run_ssh_checked(quoted_rm_command(remote_paths), 10, "remote rm failed",
 -                              f"Remote file cleanup on {self.host}")
@@ -616,7 +1106,7 @@ index 3a9f2907..d03d65c9 100644
  
      def _before_execute(self) -> None:
          if self._sync_manager is not None:
-@@ -290,7 +419,8 @@ class SSHEnvironment(BaseEnvironment):
+@@ -291,7 +521,8 @@ class SSHEnvironment(BaseEnvironment):
      def cleanup(self):
          if self._sync_manager:
              logger.info("SSH: syncing files from sandbox...")

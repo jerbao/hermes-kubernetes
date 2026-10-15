@@ -18,15 +18,19 @@
         "tools/environments/ssh.py",
         "tests/tools/test_ssh_command_batches.py",
         "tests/tools/test_ssh_profile_sync.py",
-        "tests/tools/test_ssh_return_scope.py"
+        "tests/tools/test_ssh_return_scope.py",
+        "tests/tools/test_ssh_incremental_sync.py"
       ],
       "native_tests": [
         "tests/tools/test_ssh_command_batches.py",
         "tests/tools/test_ssh_bulk_upload.py",
         "tests/tools/test_ssh_environment.py",
         "tests/tools/test_file_sync.py",
+        "tests/tools/test_file_sync_upload_snapshot.py",
+        "tests/tools/test_file_sync_back.py",
         "tests/tools/test_ssh_return_scope.py",
-        "tests/tools/test_ssh_profile_sync.py"
+        "tests/tools/test_ssh_profile_sync.py",
+        "tests/tools/test_ssh_incremental_sync.py"
       ]
     },
     {
