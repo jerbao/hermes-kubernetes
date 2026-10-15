@@ -73,6 +73,13 @@ Desktop/API. Runtime changes persist on the PVC. The workspace controller
 projects supported customizations into private Git without copying credentials,
 databases or dependency caches. Every runtime profile has an independent `.env`.
 
+With `hermes.py sync --publish`, stable local edits are safely committed and
+merged with reviewed upstream instance changes before runtime reconciliation.
+Adopting a new release reloads its pinned controller on the next invocation.
+An image mismatch blocks applying runtime state, but does not prevent preserving
+private edits in Git. Merge conflicts and an incompatible runtime produce a
+nonzero exit status; the timer retries without discarding either side.
+
 The terminal has an inspectable upstream checkout rebuilt from the pinned
 revision and patches. It reaches the running assistant's self-management
 operations through a private SSH tunnel; it does not need cluster administrator
