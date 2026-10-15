@@ -63,3 +63,18 @@ establish why every cold scan is slow. Environment-tag checks can initialize
 plugins, and native PM can select extension dependencies from the writable
 install state. Diagnose those phases before changing the database or removing
 installed plugin dependencies.
+
+## Image and writable dependency generations
+
+Native PM can select a writable plugin dependency generation instead of the
+image's base environment. After replacing an image, compare that generation's
+resolved core package versions with the new image's `uv.lock`; an updated image
+alone does not establish that processes use its packaged dependencies.
+
+Startup reconciles conflicting core versions through `pm.sync_venv(explicit=True)`.
+The native transaction retains installed extras and configured plugin members;
+it does not request repair, eviction, or raw package installation. Plugin-only
+packages do not trigger reconciliation. A failed build preserves the committed
+selection and prevents launching the new image with incompatible core versions.
+This establishes dependency consistency, not proof that every chat delay was
+caused by dependency drift.
