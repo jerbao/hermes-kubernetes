@@ -18,7 +18,6 @@ BUNDLE = Path(__file__).resolve().parents[2]
 def synchronize(root, publish_changes=False):
     from hermes_kubernetes.terminal.sync import sync
     from hermes_kubernetes.terminal.versioning import (
-        PendingRuntime,
         SocketRuntime,
         reconcile,
         publish,
@@ -29,23 +28,43 @@ def synchronize(root, publish_changes=False):
     state = sync(root)
     if state not in {"current", "updated", "local-changes", "diverged"}:
         raise ValueError("Private workspace requires review: " + state)
-    pinned = json.loads((root / "platform.lock.json").read_text())["revision"]
-    actual = subprocess.check_output(
-        ["git", "-C", str(BUNDLE), "rev-parse", "HEAD"], text=True
-    ).strip()
-    if pinned != actual:
-        print(json.dumps({"status": "reload-distribution"}))
-        return 0
     with guard(root / "state/workspace-sync.lock", create=True, blocking=False):
+        publication = None
+        if publish_changes and state in {"local-changes", "diverged"}:
+            # These edits already belong to the private repository. Preserve and
+            # merge them before requiring runtime/image compatibility; otherwise
+            # a dirty checkout prevents adopting the very release capture needs.
+            # publish() still checks paths, secrets, stability and merge conflicts.
+            publication = publish(root)
+            if publication["status"] not in {"current", "published"}:
+                print(json.dumps({**publication, "workspace": state, "phase": "publication"}))
+                return 0 if publication["status"] == "waiting-for-stable-files" else 2
+        pinned = json.loads((root / "platform.lock.json").read_text())["revision"]
+        actual = subprocess.check_output(
+            ["git", "-C", str(BUNDLE), "rev-parse", "HEAD"], text=True
+        ).strip()
+        if pinned != actual:
+            # The next invocation loads the newly adopted, immutable bundle.
+            # Never reconcile the new instance using this process's old code.
+            print(json.dumps({"status": "reload-distribution", "git": publication}))
+            return 0
         backend = SocketRuntime(root, root / ".local/runtime/control.sock", bundle=BUNDLE)
         result = reconcile(root, backend)
         if publish_changes and result["status"] == "synchronized":
             result["git"] = publish(root)
         elif result["status"] == "waiting-for-runtime":
             # Never apply projections based on a different active release.
-            result["git"] = {"status": "waiting-for-runtime"}
+            result["git"] = publication or {"status": "current"}
         print(json.dumps(result))
-        return 0 if result["status"] in {"synchronized", "waiting-for-runtime"} else 2
+        if result["status"] != "synchronized":
+            return 2
+        if publish_changes and result["git"]["status"] not in {
+            "current",
+            "published",
+            "waiting-for-stable-files",
+        }:
+            return 2
+        return 0
 
 
 def main():
