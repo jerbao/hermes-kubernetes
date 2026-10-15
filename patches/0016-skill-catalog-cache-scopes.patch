@@ -1,0 +1,87 @@
+diff --git a/tests/tools/test_skill_catalog_cache_scopes.py b/tests/tools/test_skill_catalog_cache_scopes.py
+new file mode 100644
+index 00000000..bf515f63
+--- /dev/null
++++ b/tests/tools/test_skill_catalog_cache_scopes.py
+@@ -0,0 +1,58 @@
++"""Catalog discovery must survive profile switches and long cold scans without needless rescans."""
++
++from types import SimpleNamespace
++
++import pytest
++
++from tools import skills_tool as skills
++
++
++@pytest.fixture
++def catalog(monkeypatch, tmp_path):
++    roots = []
++    for name in ("one", "two"):
++        root = tmp_path / name
++        skill = root / name / "SKILL.md"
++        skill.parent.mkdir(parents=True)
++        skill.write_text(f"---\nname: {name}\ndescription: {name}\n---\nBody\n")
++        roots.append(root)
++    active = [roots[0]]
++    monkeypatch.setattr(skills, "_skill_search_dirs", lambda: ([(1, active[0])], active[0]))
++    monkeypatch.setattr(skills, "_get_disabled_skill_names", lambda: set())
++    monkeypatch.setattr(skills, "_SKILLS_CACHE", {})
++    return roots, active
++
++
++def test_alternating_profiles_reuse_their_own_catalogs(catalog, monkeypatch):
++    roots, active = catalog
++    read = skills._read_skill_text
++    reads = []
++
++    def counted(path):
++        reads.append(path)
++        return read(path)
++
++    monkeypatch.setattr(skills, "_read_skill_text", counted)
++    assert skills._skill_catalog()[0]["name"] == "one"
++    active[0] = roots[1]
++    assert skills._skill_catalog()[0]["name"] == "two"
++    active[0] = roots[0]
++    assert skills._skill_catalog()[0]["name"] == "one"
++    assert len(reads) == 2
++
++
++def test_slow_scan_does_not_publish_an_already_expired_catalog(catalog, monkeypatch):
++    clock = [0.0]
++    monkeypatch.setattr(skills, "time", SimpleNamespace(monotonic=lambda: clock[0]))
++    read = skills._read_skill_text
++    reads = []
++
++    def slow(path):
++        reads.append(path)
++        clock[0] += skills._SKILLS_CACHE_TTL_SECONDS + 1
++        return read(path)
++
++    monkeypatch.setattr(skills, "_read_skill_text", slow)
++    assert skills._skill_catalog()[0]["name"] == "one"
++    assert skills._skill_catalog()[0]["name"] == "one"
++    assert len(reads) == 1
+diff --git a/tools/skills_tool.py b/tools/skills_tool.py
+index 9828e4c3..84edc71a 100644
+--- a/tools/skills_tool.py
++++ b/tools/skills_tool.py
+@@ -195,6 +195,9 @@ def _skill_catalog(*, skip_disabled: bool = False, include_hidden: bool = False)
+     disabled = set() if skip_disabled else _get_disabled_skill_names()
+     roots, _ = _skill_search_dirs()
+     signature = _skills_scan_signature([d for _t, d in roots], disabled)
++    # Keep each profile/project's catalog: a different root must not evict this one.
++    # Mutable directory/disabled state stays in the signature so changes still invalidate it.
++    cache_key = (*cache_key, tuple(str(d) for _t, d in roots), signature[-1])
+     now = time.monotonic()
+     cached = _SKILLS_CACHE.get(cache_key)
+     if cached is not None and cached[0] == signature and (now - cached[1]) < _SKILLS_CACHE_TTL_SECONDS:
+@@ -228,7 +231,7 @@ def _skill_catalog(*, skip_disabled: bool = False, include_hidden: bool = False)
+               if (s.pop("visible") or include_hidden) and not is_disabled_entry(s, disabled)]
+     # Keyed by the signature computed BEFORE the scan: a write racing the scan changes the
+     # signature, so the next call re-scans instead of serving a torn result.
+-    _SKILLS_CACHE[cache_key] = (signature, now, skills)
++    _SKILLS_CACHE[cache_key] = (signature, time.monotonic(), skills)
+     return [dict(s) for s in skills]
+ 
+ 

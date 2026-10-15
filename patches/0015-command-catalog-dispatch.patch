@@ -1,0 +1,88 @@
+diff --git a/tests/tui_gateway/test_slow_poll_dispatch.py b/tests/tui_gateway/test_slow_poll_dispatch.py
+index a670d9c2..018ad2a4 100644
+--- a/tests/tui_gateway/test_slow_poll_dispatch.py
++++ b/tests/tui_gateway/test_slow_poll_dispatch.py
+@@ -12,6 +12,7 @@ from tui_gateway.transport import current_transport
+     ("session.context_breakdown", {"session_id": "s"}),
+     ("subagent.list", {"session_id": "s"}),
+     ("pet.info.meta", {}),
++    ("commands.catalog", {}),
+ ])
+ def test_slow_poll_leaves_dispatcher_available(monkeypatch, method, params):
+     entered, release, written = threading.Event(), threading.Event(), threading.Event()
+diff --git a/tui_gateway/methods_tools.py b/tui_gateway/methods_tools.py
+index 649321a2..50613f28 100644
+--- a/tui_gateway/methods_tools.py
++++ b/tui_gateway/methods_tools.py
+@@ -486,17 +486,29 @@ def _catalog_plugin_commands(cat: _Catalog) -> None:
+         cat.commands[key] = {"argument_mode": mode, "desktop": None}
+ 
+ 
++def _catalog_stage(name, operation, *args):
++    """Name expensive discovery stages without logging configuration or skill contents."""
++    started = time.monotonic()
++    try:
++        return operation(*args)
++    finally:
++        elapsed = time.monotonic() - started
++        if elapsed >= 0.25:
++            logger.info("commands.catalog stage=%s elapsed_ms=%d", name, elapsed * 1000)
++
++
+ def _catalog_skills(cat: _Catalog, skills: dict[str, dict]) -> str:
+     """Append skill pairs and fill ``skills`` = ``{key: {usage, origin}}`` (every consumer ranks by them).
+     Returns the one-line notice for skills whose name is a built-in command (no ``/<name>`` entry;
+     ``agent.skill_commands`` guard), ``""`` when none."""
+-    usage, origin_of = _skill_usage_lookup()
++    usage, origin_of = _catalog_stage("skill_usage", _skill_usage_lookup)
+     sc = _tools_mod("agent.skill_commands")
+-    for k, info in sorted(sc.get_interactive_skill_commands().items()):
++    for k, info in sorted(_catalog_stage("skill_commands", sc.get_interactive_skill_commands).items()):
+         cat.pairs.append([k, str(info.get("description", "Skill"))])
+         name = str(info.get("name") or k.lstrip("/"))
+         skills[k] = {"usage": usage(name), "origin": origin_of(name)}
+-    names = sorted(s["name"] for s in _tools_mod("tools.skills_tool")._find_all_skills())
++    names = sorted(s["name"] for s in _catalog_stage(
++        "skill_collision_catalog", _tools_mod("tools.skills_tool")._find_all_skills))
+     return "; ".join(filter(None, map(sc.skill_command_collision_note, names)))
+ 
+ 
+@@ -511,21 +523,21 @@ def _(rid, params: dict) -> dict:
+     actually in (#114359); a session-less draft is bound to ``params['profile']`` (#124651), and an
+     unknown profile is 4064 like ``complete.slash`` — never a launch-profile palette."""
+     cat = _Catalog()
+-    _catalog_registry(cat)
++    _catalog_stage("registry", _catalog_registry, cat)
+     warning = ""
+     skills: dict[str, dict] = {}
+     with _session_home_scope(_sessions.get(params.get("session_id", "")), cwd=_completion_cwd(params),
+                              profile=params.get("profile")):
+         try:
+-            _catalog_quick_commands(cat)
++            _catalog_stage("quick_commands", _catalog_quick_commands, cat)
+         except Exception as e:
+             warning = f"quick_commands discovery unavailable: {e}"
+         try:
+-            _catalog_plugin_commands(cat)
++            _catalog_stage("plugins", _catalog_plugin_commands, cat)
+         except Exception as e:
+             warning = warning or f"plugin command discovery unavailable: {e}"
+         try:
+-            collision_note = _catalog_skills(cat, skills)  # always runs: skills must list even when a loader failed
++            collision_note = _catalog_stage("skills", _catalog_skills, cat, skills)  # always runs: skills must list even when a loader failed
+             warning = warning or collision_note
+         except Exception as e:
+             warning = f"skill discovery unavailable: {e}"
+diff --git a/tui_gateway/server.py b/tui_gateway/server.py
+index 08418121..2766e803 100644
+--- a/tui_gateway/server.py
++++ b/tui_gateway/server.py
+@@ -194,7 +194,7 @@ _LONG_HANDLERS = frozenset({
+     "session.resume", "session.save", "session.workspace.move", "shell.exec", "skills.manage", "slash.exec",
+     "onboarding.ensure_setup_profile", "onboarding.ensure_setup_session", "onboarding.reset_setup_profile",
+     "session.start_chat",
+-    "session.context_breakdown", "subagent.list", "pet.info.meta",
++    "session.context_breakdown", "subagent.list", "pet.info.meta", "commands.catalog",
+     "session.control.read",  # WAL snapshot read; keep shared-DB contention off the WS dispatcher
+     "command.dispatch",  # /goal draft invokes the auxiliary model; never block the RPC reader
+     "shared_metrics.set",  # consent reconcile waits on the metrics store's write lock

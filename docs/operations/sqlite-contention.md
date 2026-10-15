@@ -44,3 +44,22 @@ Remote terminal upload timeouts and local validation of an SSH-only working
 directory are separate problems. A producer blocked writing its archive to
 SSH is not evidence of a database lock. Preserve the transfer and checkpoint
 semantics when investigating those paths.
+
+## Command catalog discovery
+
+`commands.catalog` also runs in the RPC executor. Slow discovery stages log
+`commands.catalog stage=... elapsed_ms=...`, distinguishing configuration,
+plugin initialization, skill usage metadata, skill commands, and collision
+listing. A slow stage is evidence about that stage, not a disk-latency measurement.
+
+Skill catalogs keep separate cache entries for different profile/project roots.
+Switching profiles no longer evicts the previously scanned catalog. The 30-second
+TTL starts when a scan finishes; a scan taking longer than its TTL no longer
+publishes an immediately expired entry. Directory signatures, disabled skills,
+explicit cache clearing, and result-copy semantics continue to apply.
+
+These changes reduce repeated scans and protect the dispatcher. They do not
+establish why every cold scan is slow. Environment-tag checks can initialize
+plugins, and native PM can select extension dependencies from the writable
+install state. Diagnose those phases before changing the database or removing
+installed plugin dependencies.

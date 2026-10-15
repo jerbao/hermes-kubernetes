@@ -201,6 +201,31 @@
         "tests/hermes_state/test_lock_timing.py",
         "tests/hermes_state/test_session_db_read_conn_pool.py"
       ]
+    },
+    {
+      "path": "patches/0015-command-catalog-dispatch.patch",
+      "description": "Keep command catalog discovery off the WebSocket dispatcher and time its stages",
+      "files": [
+        "tui_gateway/server.py",
+        "tui_gateway/methods_tools.py",
+        "tests/tui_gateway/test_slow_poll_dispatch.py"
+      ],
+      "native_tests": [
+        "tests/tui_gateway/test_slow_poll_dispatch.py",
+        "tests/tui_gateway/test_command_description_fidelity.py"
+      ]
+    },
+    {
+      "path": "patches/0016-skill-catalog-cache-scopes.patch",
+      "description": "Reuse separate skill catalogs across profile switches and start TTL after discovery",
+      "files": [
+        "tools/skills_tool.py",
+        "tests/tools/test_skill_catalog_cache_scopes.py"
+      ],
+      "native_tests": [
+        "tests/tools/test_skill_catalog_cache_scopes.py",
+        "tests/tools/test_skills_tool.py"
+      ]
     }
   ]
 }

@@ -128,6 +128,24 @@
         "tests/hermes_state/test_session_db_read_conn_pool.py"
       ],
       "sha256": "43a88bbdee49d1db97df2fa643446f43257788a693892a138a6d5a0d1d35782f"
+    },
+    {
+      "path": "patches/0015-command-catalog-dispatch.patch",
+      "description": "Keep command catalog discovery off the WebSocket dispatcher and time its stages",
+      "native_tests": [
+        "tests/tui_gateway/test_slow_poll_dispatch.py",
+        "tests/tui_gateway/test_command_description_fidelity.py"
+      ],
+      "sha256": "270edb7415734516dce1822039940aeb2e3d96c2e4f87bbd3dadb6524d952e97"
+    },
+    {
+      "path": "patches/0016-skill-catalog-cache-scopes.patch",
+      "description": "Reuse separate skill catalogs across profile switches and start TTL after discovery",
+      "native_tests": [
+        "tests/tools/test_skill_catalog_cache_scopes.py",
+        "tests/tools/test_skills_tool.py"
+      ],
+      "sha256": "94ac09d2a13c8e79aaa9feb7c7a23d8f4916e0341df159ac27b93d6e31f5f3f2"
     }
   ],
   "native_tests": [
@@ -152,6 +170,9 @@
     "tests/tui_gateway/test_inline_rpc_timing.py",
     "tests/tui_gateway/test_slow_poll_dispatch.py",
     "tests/hermes_state/test_read_path_diagnostics.py",
-    "tests/hermes_state/test_session_db_read_conn_pool.py"
+    "tests/hermes_state/test_session_db_read_conn_pool.py",
+    "tests/tui_gateway/test_command_description_fidelity.py",
+    "tests/tools/test_skill_catalog_cache_scopes.py",
+    "tests/tools/test_skills_tool.py"
   ]
 }
