@@ -109,8 +109,8 @@ changes as focused patches in a public distribution development checkout.
 Never reset or clean a personal home to force an update.
 
 Check background workspace synchronization explicitly. Its systemd units belong
-to Nyra's **user** manager, so always use `--user` when inspecting or enabling
-them. `sync-status` reports whether the timer is enabled/active, the last/next
+to the installation owner's **user** manager, so use `--user` when inspecting or
+enabling them. `sync-status` reports whether the timer is enabled/active, the last/next
 trigger, and whether a sync is running or failed:
 
 ```sh
@@ -123,11 +123,44 @@ and stable publication on `main`. A successful `sync --publish` command reports
 its workspace, runtime projection and publication result as JSON. A conflict,
 missing bridge, disabled timer or failed service must be surfaced and resolved;
 do not assume a local edit reached the live profile. If the timer is disabled,
-Nyra can restore her own user unit with
+the operator can restore the existing user unit with
 `systemctl --user enable --now hermes-workspace-sync.timer` and recheck
 `sync-status`. If a service run failed, inspect its user journal with
 `journalctl --user -u hermes-workspace-sync.service -n 50 --no-pager`. Git
 commits and pushes stay in `~/.hermes` as its owner.
+
+## Source ownership and delivery evidence
+
+Choose the source owner before the first write. Reusable runtime code, patches,
+skills and operating guidance belong in the public distribution. Fix and test
+there first; private consumers adopt its release. An instance-only override does
+not complete a shared fix. Instance policies, personas and profile customizations
+belong in the private repository. Keep personal repository names and endpoints
+out of shared instructions.
+
+Native operations such as credentials, profile lifecycle and dependency
+installation still use their owning CLI/API with native approvals. For versionable
+files, the installation's source-authoring policy takes precedence over generic
+native-authoring examples in this guide; without a repository-first policy, use
+native `skill_manage` for personal skills. Reconcile sanitized native projections
+afterwards, without putting secrets in Git.
+
+For each requested outcome report its target, exact evidence and pending work:
+
+- **Repository publication:** when requested, record the repository, commit and
+  paths; read the exact intended files from the agreed delivery ref. A PR-only
+  request ends at its verified PR head; a merged-publication request requires the
+  target branch. A timer, local commit or successful sync is not remote readback.
+- **Runtime delivery:** when requested, read the exact profile's installed files
+  and compare contents or hashes with the intended artifact. Check enabled or
+  disabled state separately. Registration/doctor does not prove hook execution
+  or that an existing conversation reloaded; report activation timing honestly.
+- **Release adoption:** when required, verify the distribution release, private
+  adoption and deployed runtime separately. A merged public PR is not deployment.
+
+Do not impose repository publication on a native-only request that has no such
+requirement. Preserve unrelated work and report partial results as partial; do
+not let a successful check stand in for another requested outcome.
 
 ## Updates and conflicts
 
