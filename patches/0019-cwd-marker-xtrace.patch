@@ -1,0 +1,98 @@
+diff --git a/tests/tools/test_base_environment.py b/tests/tools/test_base_environment.py
+index 93c5de09..78a78f7f 100644
+--- a/tests/tools/test_base_environment.py
++++ b/tests/tools/test_base_environment.py
+@@ -4,6 +4,9 @@ Tests _wrap_command(), _extract_cwd_from_output(), _embed_stdin_heredoc(),
+ init_session() failure handling, and the CWD marker contract.
+ """
+ 
++import shlex
++import shutil
++import subprocess
+ from unittest.mock import MagicMock
+ 
+ import pytest
+@@ -11,6 +14,7 @@ import pytest
+ from tools import terminal_tool_sudo
+ from tools.environments.base import BaseEnvironment, _load_json_store
+ from tools.environments.base_output import _BoundedOutputCollector
++from tools.environments.base_session_env import _snapshot_bootstrap_script
+ 
+ 
+ def test_snapshot_store_reads_dict_and_tolerates_missing_or_damaged_file(tmp_path):
+@@ -335,6 +339,61 @@ class TestCwdMarker:
+         assert env1._cwd_marker != env2._cwd_marker
+ 
+ 
++    @pytest.mark.parametrize("traced", [False, True])
++    def test_wrapper_keeps_user_trace_status_and_cwd(self, tmp_path, traced):
++        # Cobre: wrapper com/sem xtrace; trace interno tardio não pode virar cwd %s.
++        bash = shutil.which("bash")
++        if bash is None:
++            pytest.skip("bash required")
++        cwd = tmp_path / "cwd with spaces"
++        cwd.mkdir()
++        env = _TestableEnv(cwd=str(tmp_path))
++        command = ("set -x; " if traced else "") + (
++            f"cd {shlex.quote(str(cwd))}; echo user-output; (exit 7)"
++        )
++        proc = subprocess.run(
++            [bash, "-c", env._wrap_command(command, env.cwd)],
++            capture_output=True, text=True, timeout=10, check=False,
++        )
++        result = {"output": proc.stdout + proc.stderr}
++        env._extract_cwd_from_output(result)
++
++        assert proc.returncode == 7
++        assert env._cwd_marker not in proc.stderr
++        assert env._cwd_marker not in result["output"]
++        assert result["cwd_observed"] is True
++        assert result["cwd"] == env.cwd == str(cwd.resolve())
++        assert result["output"].startswith("user-output\n")
++        if traced:
++            assert "+ echo user-output" in proc.stderr
++            assert "+ echo user-output" in result["output"]
++        else:
++            assert proc.stderr == ""
++            assert result["output"] == "user-output\n"
++
++    def test_bootstrap_marker_survives_reordered_xtrace(self, tmp_path):
++        # Cobre: bootstrap sob -x; emissão interna não deve contaminar o parser real.
++        bash = shutil.which("bash")
++        if bash is None:
++            pytest.skip("bash required")
++        env = _TestableEnv(cwd=str(tmp_path))
++        env._snapshot_path = str(tmp_path / "snapshot.sh")
++        script = _snapshot_bootstrap_script(
++            excluded_names=(), **env._snapshot_script_kwargs(env.cwd),
++        )
++        proc = subprocess.run(
++            [bash, "-x", "-c", script], capture_output=True, text=True, timeout=10, check=False,
++        )
++        result = {"output": proc.stdout + proc.stderr}
++        env._extract_cwd_from_output(result)
++
++        assert proc.returncode == 0, proc.stderr
++        assert env._cwd_marker not in proc.stderr
++        assert env._cwd_marker not in result["output"]
++        assert result["cwd_observed"] is True
++        assert result["cwd"] == env.cwd == str(tmp_path.resolve())
++
++
+ class TestSanitizeTaskIdForPath:
+     """sanitize_task_id_for_path must yield mountable, collision-free segments.
+ 
+diff --git a/tools/environments/base_session_env.py b/tools/environments/base_session_env.py
+index 3b5630b1..be95f4cc 100644
+--- a/tools/environments/base_session_env.py
++++ b/tools/environments/base_session_env.py
+@@ -44,7 +44,8 @@ def _cwd_marker(session_id: str) -> str:
+ def _cwd_marker_printf(marker: str) -> str:
+     """Emit the CWD marker on its own line (leading ``\\n`` guards against a
+     command whose output lacks a trailing newline; ``_split_cwd_marker`` strips it)."""
+-    return f"printf '\\n{marker}%s{marker}\\n' \"$(pwd -P)\""
++    # Keep xtrace's format string out of the merged marker stream.
++    return f"{{ set +x; }} 2>/dev/null; printf '\\n{marker}%s{marker}\\n' \"$(pwd -P)\""
+ 
+ 
+ def _export_dump_excluding_session_vars(tmp_path: str, excluded_names: Iterable[str] = ()) -> str:
