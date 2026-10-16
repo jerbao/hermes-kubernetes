@@ -27,7 +27,7 @@ ENTRYPOINT ["/sbin/tini", "-s", "-g", "--", "/opt/mcp-venv/bin/python", "/opt/mc
 # retain Alpine. Node and package versions remain identical across variants.
 FROM ${ALMA_IMAGE} AS codegraph
 RUN microdnf install -y --setopt=install_weak_deps=0 \
-      ca-certificates python3 python3-pip openssh-clients git curl libstdc++ libatomic shadow-utils \
+      ca-certificates python3 python3-pip openssh-clients git curl libstdc++ libatomic shadow-utils procps-ng \
     && microdnf clean all \
     && python3 -m venv /opt/mcp-venv \
     && groupadd -g 10000 mcp \
