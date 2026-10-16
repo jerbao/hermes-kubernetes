@@ -261,6 +261,17 @@
         "tests/tools/test_skills_tool.py",
         "tests/tools/test_skills_tool_discovery_cache.py"
       ]
+    },
+    {
+      "path": "patches/0019-cwd-marker-xtrace.patch",
+      "description": "Keep shell xtrace out of internal CWD markers",
+      "files": [
+        "tools/environments/base_session_env.py",
+        "tests/tools/test_base_environment.py"
+      ],
+      "native_tests": [
+        "tests/tools/test_base_environment.py"
+      ]
     }
   ]
 }
