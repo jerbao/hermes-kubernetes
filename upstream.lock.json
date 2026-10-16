@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "repository": "https://github.com/NousResearch/hermes-agent",
-  "revision": "71d34bad1045610252eda02ee79549436896e784",
+  "revision": "d923a5eb487a17c0a68801bba9ef0f56c81040a8",
   "release": {
-    "tag": "v0.21.7",
-    "commit": "71d34bad1045610252eda02ee79549436896e784",
-    "id": 410112828,
-    "published_at": "2026-10-12T05:53:41Z",
-    "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.7"
+    "tag": "v0.22.2",
+    "commit": "d923a5eb487a17c0a68801bba9ef0f56c81040a8",
+    "id": 413474259,
+    "published_at": "2026-10-15T08:21:32Z",
+    "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.2"
   },
   "patches": [
     {
@@ -44,7 +44,7 @@
     },
     {
       "path": "patches/0004-mcp-stdio-executor.patch",
-      "sha256": "df62dab71415ab792047b810491193c82301a4189c64adbecf7953e254fa0f91",
+      "sha256": "79ff721b973b1d94d665ee1e907bea459bd6869fb563685f2f70d55d09de6290",
       "description": "External stdio executor and MCP catalog transport in the interface API",
       "native_tests": [
         "tests/tools/test_mcp_stdio_executor.py",
@@ -73,7 +73,7 @@
     },
     {
       "path": "patches/0008-quota-refresh-and-route-reconciliation.patch",
-      "sha256": "09bc1218ffc585bd071081d66a3f0135619afa9821dae3fb4514eaf0b96d4515",
+      "sha256": "9d1c908b45e08e9975e96b1ce58660d9f16740f61bc47d389dc3fe1688616fbb",
       "description": "Refresh subscription usage independently and reconcile stale provider/model pairs by unique catalog ownership",
       "native_tests": [
         "tests/hermes_cli/test_proxy_subscription_usage.py",
@@ -87,7 +87,7 @@
         "tests/tui_gateway/test_session_control.py",
         "tests/hermes_cli/test_loops.py"
       ],
-      "sha256": "c88fbca44c2805c5e27b4e2add3dc0b6f973513ade13f4dc67935a2fbf7faeaa"
+      "sha256": "fc502f413916f49227d31449a1b9647ce3e00dde3d225ee06c2573622f6f61d0"
     },
     {
       "path": "patches/0010-desktop-session-control-reconnect.patch",
@@ -120,7 +120,7 @@
       "native_tests": [
         "tests/tui_gateway/test_slow_poll_dispatch.py"
       ],
-      "sha256": "b6cff1c1ad4ebaf684e0a660cc4e081cdb95de76e6bfe6797190130ab7bdb355"
+      "sha256": "814b83bb3b48450c5456e7a0b0e136980ef0ab422f587caa94657b4975bd2c64"
     },
     {
       "path": "patches/0014-read-lock-diagnostics.patch",
@@ -139,7 +139,7 @@
         "tests/tui_gateway/test_slow_poll_dispatch.py",
         "tests/tui_gateway/test_command_description_fidelity.py"
       ],
-      "sha256": "270edb7415734516dce1822039940aeb2e3d96c2e4f87bbd3dadb6524d952e97"
+      "sha256": "5cc59e1424e36eb795050966fc9c81de583f4ba461d065eb8aec5ffcf12002ce"
     },
     {
       "path": "patches/0016-skill-catalog-cache-scopes.patch",
