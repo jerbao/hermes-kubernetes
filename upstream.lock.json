@@ -182,6 +182,18 @@
       "native_tests": [
         "tests/tools/test_base_environment.py"
       ]
+    },
+    {
+      "path": "patches/0020-minimax-m31-flash.patch",
+      "sha256": "4fbdf3dd4d3bbe262d9cfcc20613f43a57d56b692149e952b3075a1cc45f2ca1",
+      "description": "Backport MiniMax-M3.1-Flash catalog and reasoning support from upstream PR #141412",
+      "native_tests": [
+        "tests/plugins/model_providers/test_minimax_m31_flash.py",
+        "tests/plugins/model_providers/test_minimax_profile.py",
+        "tests/plugins/model_providers/test_custom_profile.py",
+        "tests/hermes_cli/test_models.py",
+        "tests/agent/test_model_metadata.py"
+      ]
     }
   ],
   "native_tests": [
@@ -223,6 +235,11 @@
     "tests/agent/test_skill_utils.py",
     "tests/agent/test_skill_commands.py",
     "tests/tools/test_skills_tool_discovery_cache.py",
-    "tests/tools/test_base_environment.py"
+    "tests/tools/test_base_environment.py",
+    "tests/plugins/model_providers/test_minimax_m31_flash.py",
+    "tests/plugins/model_providers/test_minimax_profile.py",
+    "tests/plugins/model_providers/test_custom_profile.py",
+    "tests/hermes_cli/test_models.py",
+    "tests/agent/test_model_metadata.py"
   ]
 }
