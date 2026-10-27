@@ -295,12 +295,17 @@
       "description": "Write ttl 5m explicitly on native Anthropic cache markers so CLIProxyAPI does not promote subagent caches to 1h",
       "files": [
         "agent/prompt_caching.py",
-        "tests/agent/test_prompt_caching.py"
+        "tests/agent/test_prompt_caching.py",
+        "tests/agent/test_anthropic_adapter.py",
+        "tests/agent/test_prompt_cache_boundary.py",
+        "tests/agent/test_prompt_cache_ttl_propagation.py"
       ],
       "native_tests": [
         "tests/agent/test_prompt_caching.py",
         "tests/agent/test_prompt_cache_ttl_auto.py",
-        "tests/agent/test_prompt_cache_ttl_propagation.py"
+        "tests/agent/test_prompt_cache_ttl_propagation.py",
+        "tests/agent/test_anthropic_adapter.py",
+        "tests/agent/test_prompt_cache_boundary.py"
       ]
     }
   ]

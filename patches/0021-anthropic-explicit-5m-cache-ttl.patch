@@ -1,5 +1,5 @@
 diff --git a/agent/prompt_caching.py b/agent/prompt_caching.py
-index f479646..c2c9fc5 100644
+index f479646f..c2c9fc56 100644
 --- a/agent/prompt_caching.py
 +++ b/agent/prompt_caching.py
 @@ -99,9 +99,16 @@ def _can_carry_marker(msg: dict, native_anthropic: bool, tool_part_markers: bool
@@ -40,8 +40,91 @@ index f479646..c2c9fc5 100644
  
      breakpoints_used = 0
      if messages[0].get("role") == "system":
+diff --git a/tests/agent/test_anthropic_adapter.py b/tests/agent/test_anthropic_adapter.py
+index 132c8416..77070072 100644
+--- a/tests/agent/test_anthropic_adapter.py
++++ b/tests/agent/test_anthropic_adapter.py
+@@ -768,7 +768,7 @@ class TestConvertMessages:
+ 
+         assert tool_use["type"] == "tool_use"
+         assert tool_use["id"] == "tc_1"
+-        assert tool_use["cache_control"] == {"type": "ephemeral"}
++        assert tool_use["cache_control"] == {"type": "ephemeral", "ttl": "5m"}
+ 
+     def test_ordered_replay_keeps_cache_control_from_nonempty_content(self):
+         """An assistant turn that interleaves signed thinking with a tool_use
+@@ -860,7 +860,7 @@ class TestConvertMessages:
+         assert tool_use["type"] == "tool_use"
+         assert tool_use["id"] == "tc_1"
+         assert tool_use["input"] == {"query": "redacted"}
+-        assert tool_use["cache_control"] == {"type": "ephemeral"}
++        assert tool_use["cache_control"] == {"type": "ephemeral", "ttl": "5m"}
+ 
+     def test_tool_cache_control_is_preserved_on_tool_result_block(self):
+         messages = apply_anthropic_cache_control([
+@@ -887,7 +887,7 @@ class TestConvertMessages:
+         assert tool_block["type"] == "tool_result"
+         assert tool_block["tool_use_id"] == "tc_1"
+         assert tool_block["content"] == "result"
+-        assert tool_block["cache_control"] == {"type": "ephemeral"}
++        assert tool_block["cache_control"] == {"type": "ephemeral", "ttl": "5m"}
+ 
+ 
+     def test_empty_user_message_string_gets_placeholder(self):
+diff --git a/tests/agent/test_prompt_cache_boundary.py b/tests/agent/test_prompt_cache_boundary.py
+index 40eb5b6f..3b09eb87 100644
+--- a/tests/agent/test_prompt_cache_boundary.py
++++ b/tests/agent/test_prompt_cache_boundary.py
+@@ -30,6 +30,7 @@ from agent.prompt_caching import (
+ from agent.skill_commands import _SINGLE_SKILL_INSTRUCTION
+ 
+ MARKER = {"type": "ephemeral"}
++NATIVE_5M = {"type": "ephemeral", "ttl": "5m"}
+ 
+ SKILL_BODY = "Inspect the report carefully and preserve the stable instructions."
+ 
+@@ -193,7 +194,7 @@ class TestRequestLocalSplit:
+ 
+         assert messages == [{"role": "user", "content": original}]
+         assert isinstance(plan.messages[0]["content"], list)
+-        assert plan.messages[0]["content"][0]["cache_control"] == MARKER
++        assert plan.messages[0]["content"][0]["cache_control"] == NATIVE_5M
+         assert "cache_control" not in plan.messages[0]["content"][1]
+ 
+     @pytest.mark.parametrize("later_turns", [0, 4], ids=["holds-a-marker", "outside-the-marker-window"])
+@@ -296,7 +297,7 @@ class TestRealBuilders:
+ 
+         assert len(first_blocks) == len(second_blocks) == 2
+         assert first_blocks[0] == second_blocks[0]
+-        assert first_blocks[0]["cache_control"] == MARKER
++        assert first_blocks[0]["cache_control"] == NATIVE_5M
+         assert SKILL_BODY in first_blocks[0]["text"]
+         assert "ticket=one" not in first_blocks[0]["text"]
+         assert "cache_control" not in first_blocks[1]
+diff --git a/tests/agent/test_prompt_cache_ttl_propagation.py b/tests/agent/test_prompt_cache_ttl_propagation.py
+index 66a871e8..a2e8173d 100644
+--- a/tests/agent/test_prompt_cache_ttl_propagation.py
++++ b/tests/agent/test_prompt_cache_ttl_propagation.py
+@@ -150,7 +150,7 @@ class TestMoACacheControlThreadsTtl:
+             "MoA decoration must clamp 1h to 5m on Qwen destinations"
+         )
+ 
+-    def test_moa_decoration_defaults_to_5m_without_ttl(self):
++    def test_moa_decoration_defaults_to_explicit_5m_on_native_wire(self):
+         from agent.moa_loop import _maybe_apply_moa_cache_control
+ 
+         messages = [
+@@ -168,7 +168,7 @@ class TestMoACacheControlThreadsTtl:
+         )
+         markers = _collect_cache_controls(out)
+         assert markers
+-        assert all("ttl" not in m for m in markers)
++        assert all(m.get("ttl") == "5m" for m in markers)
+ 
+ 
+ class TestAuxFallbackReplanThreadsTtl:
 diff --git a/tests/agent/test_prompt_caching.py b/tests/agent/test_prompt_caching.py
-index f4179ac..c8def53 100644
+index f4179ac5..c8def531 100644
 --- a/tests/agent/test_prompt_caching.py
 +++ b/tests/agent/test_prompt_caching.py
 @@ -16,6 +16,7 @@ from agent.prompt_caching import (
