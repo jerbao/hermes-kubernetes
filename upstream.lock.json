@@ -194,6 +194,16 @@
         "tests/hermes_cli/test_models.py",
         "tests/agent/test_model_metadata.py"
       ]
+    },
+    {
+      "path": "patches/0021-anthropic-explicit-5m-cache-ttl.patch",
+      "sha256": "9a4f029876b5beae7c1d345653096991fe0143f15cc1ad76b5962fd6c93fb26f",
+      "description": "Write ttl 5m explicitly on native Anthropic cache markers so CLIProxyAPI does not promote subagent caches to 1h",
+      "native_tests": [
+        "tests/agent/test_prompt_caching.py",
+        "tests/agent/test_prompt_cache_ttl_auto.py",
+        "tests/agent/test_prompt_cache_ttl_propagation.py"
+      ]
     }
   ],
   "native_tests": [
@@ -240,6 +250,9 @@
     "tests/plugins/model_providers/test_minimax_profile.py",
     "tests/plugins/model_providers/test_custom_profile.py",
     "tests/hermes_cli/test_models.py",
-    "tests/agent/test_model_metadata.py"
+    "tests/agent/test_model_metadata.py",
+    "tests/agent/test_prompt_caching.py",
+    "tests/agent/test_prompt_cache_ttl_auto.py",
+    "tests/agent/test_prompt_cache_ttl_propagation.py"
   ]
 }
