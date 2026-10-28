@@ -13,6 +13,10 @@ permissions:
 concurrency:
   group: distribution-release-${{ github.ref }}
   cancel-in-progress: false
+env:
+  # Docker 29 (containerd image store) pushes an OCI index with a provenance attestation by default.
+  # Kubelets then match the amd64/v2 platform entry and reject it; a plain manifest skips that match.
+  BUILDX_NO_DEFAULT_ATTESTATIONS: '1'
 jobs:
   hermes:
     runs-on: ubuntu-latest
@@ -42,6 +46,7 @@ jobs:
           docker push "$image"
           mkdir -p .build/release
           docker inspect --format '{{index .RepoDigests 0}}' "$image" > .build/release/hermes.txt
+          sh scripts/check_manifest.sh "$(cat .build/release/hermes.txt)"
       - uses: actions/upload-artifact@v4
         with:
           name: hermes-digest
@@ -78,6 +83,7 @@ jobs:
             python tests/executors/test_image.py "$image" "${checks[@]}"
             docker push "$image"
             docker inspect --format '{{index .RepoDigests 0}}' "$image" > ".build/release/$component.txt"
+            sh scripts/check_manifest.sh "$(cat ".build/release/$component.txt")"
           done
       - uses: actions/upload-artifact@v4
         with:
