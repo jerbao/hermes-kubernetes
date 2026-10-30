@@ -1,5 +1,5 @@
 diff --git a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.test.tsx b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.test.tsx
-index c7c477f7..51dc6793 100644
+index c700f88a..ef2e1ed0 100644
 --- a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.test.tsx
 +++ b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.test.tsx
 @@ -59,6 +59,13 @@ import { FakeWebSocket } from '../../../test/fake-gateway-socket'
@@ -16,7 +16,7 @@ index c7c477f7..51dc6793 100644
  vi.mock(import('@/store/notifications'), async importOriginal => ({
    ...(await importOriginal()),
    notifyError: vi.fn()
-@@ -226,6 +233,7 @@ beforeEach(() => {
+@@ -225,6 +232,7 @@ beforeEach(() => {
    backendExit = null
    clearNotifications()
    vi.mocked(notifyError).mockReset()
@@ -24,7 +24,7 @@ index c7c477f7..51dc6793 100644
    vi.mocked(warnIfTerminalBackendUnavailable).mockClear()
    ;(globalThis as { WebSocket: unknown }).WebSocket = FakeWebSocket
    ;(window as { hermesDesktop?: unknown }).hermesDesktop = fakeDesktop()
-@@ -1515,6 +1523,7 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () =>
+@@ -1514,6 +1522,7 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () =>
    })
  
    it('FIX: a successful reconnect after a prolonged drop restores the open gateway', async () => {
@@ -32,7 +32,7 @@ index c7c477f7..51dc6793 100644
      render(<Harness />)
      await flushAsync()
  
-@@ -1534,6 +1543,10 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () =>
+@@ -1533,6 +1542,10 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () =>
  
      expect($gatewayState.get()).toBe('open')
      expect($desktopBoot.get().error).toBeNull()
@@ -44,10 +44,10 @@ index c7c477f7..51dc6793 100644
  
    it('a getConnection() that hangs on reconnect does not permanently latch the backoff loop (#93454)', async () => {
 diff --git a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
-index 89a3534e..f32beaa1 100644
+index a013ec93..0ccfc5a3 100644
 --- a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
 +++ b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
-@@ -33,6 +33,7 @@ import {
+@@ -34,6 +34,7 @@ import {
    setDesktopBootStep
  } from '@/store/boot'
  import { resetBackgroundPollingGuard } from '@/store/composer-status'
@@ -55,7 +55,7 @@ index 89a3534e..f32beaa1 100644
  import { noteBackendDrop, noteBackendExited } from '@/store/desktop-metrics'
  import {
    $gateway,
-@@ -328,6 +329,7 @@ export function useGatewayBoot({
+@@ -326,6 +327,7 @@ export function useGatewayBoot({
      }
  
      let bootCompleted = false
@@ -63,7 +63,7 @@ index 89a3534e..f32beaa1 100644
      // The other way a cold boot concludes. Main keeps startHermes() available
      // after the renderer gave up, and every later getConnection() caller
      // re-enters it, replaying `backend.resolve` (running:true) then
-@@ -1102,9 +1104,12 @@ export function useGatewayBoot({
+@@ -1124,9 +1126,12 @@ export function useGatewayBoot({
          // so dismiss it here once we're open again — otherwise the overlay sticks
          // at ~94%. A no-op on a normal (non-rebuild) reconnect.
          if (bootCompleted) {
@@ -76,7 +76,7 @@ index 89a3534e..f32beaa1 100644
          if (isStableOpen(openedAt)) {
            resetReconnectBackoff()
          }
-@@ -1132,6 +1137,15 @@ export function useGatewayBoot({
+@@ -1154,6 +1159,15 @@ export function useGatewayBoot({
      const sourceProfileNow = () => normalizeProfileKey($activeGatewayProfile.get())
  
      const offEvent = gateway.onEvent(event => {
@@ -90,10 +90,10 @@ index 89a3534e..f32beaa1 100644
 +      }
 +
        const connectionId = activeGatewayConnectionId()
-       const sourceProfile = sourceProfileNow()
+       const sourceProfile = canonicalOwnerProfile(event) ?? sourceProfileNow()
  
 diff --git a/apps/desktop/src/store/session-control.test.ts b/apps/desktop/src/store/session-control.test.ts
-index ed4f15d3..1ea14f5c 100644
+index 3be6b3ef..53f20c3b 100644
 --- a/apps/desktop/src/store/session-control.test.ts
 +++ b/apps/desktop/src/store/session-control.test.ts
 @@ -18,6 +18,7 @@ import {
@@ -104,7 +104,7 @@ index ed4f15d3..1ea14f5c 100644
    refreshSupportedSessionControlAfterTurn,
    runSessionControlAction,
    type SessionControlSnapshot
-@@ -420,6 +421,33 @@ describe('session-control store', () => {
+@@ -434,6 +435,33 @@ describe('session-control store', () => {
      expect($sessionControlBySession.get().s1!.snapshot!.revision).toBe('newer-read')
    })
  
@@ -139,10 +139,10 @@ index ed4f15d3..1ea14f5c 100644
      applySessionControlSnapshot('s1', FULL_SNAPSHOT)
      const slow = deferred<unknown>()
 diff --git a/apps/desktop/src/store/session-control.ts b/apps/desktop/src/store/session-control.ts
-index 138503da..3d0b0c91 100644
+index 0046d478..99fab6ee 100644
 --- a/apps/desktop/src/store/session-control.ts
 +++ b/apps/desktop/src/store/session-control.ts
-@@ -141,6 +141,7 @@ const ERROR_LIMIT = 240
+@@ -142,6 +142,7 @@ const ERROR_LIMIT = 240
  
  const versions = new Map<string, number>()
  const eventVersions = new Map<string, number>()
@@ -150,7 +150,7 @@ index 138503da..3d0b0c91 100644
  
  export const $sessionControlBySession = atom<Record<string, SessionControlEntry>>({})
  
-@@ -606,6 +607,7 @@ export function clearSessionControl(sessionId: string): void {
+@@ -607,6 +608,7 @@ export function clearSessionControl(sessionId: string): void {
    }
  
    advanceVersion(sessionId)
@@ -158,7 +158,7 @@ index 138503da..3d0b0c91 100644
    const entries = $sessionControlBySession.get()
  
    if (!(sessionId in entries)) {
-@@ -630,6 +632,7 @@ export function clearAllSessionControl(): void {
+@@ -631,6 +633,7 @@ export function clearAllSessionControl(): void {
    $sessionControlBySession.set({})
    versions.clear()
    eventVersions.clear()
@@ -166,7 +166,7 @@ index 138503da..3d0b0c91 100644
  }
  
  function beginRead(sessionId: string, background: boolean): number {
-@@ -799,6 +802,31 @@ export async function refreshSessionControl(
+@@ -817,6 +820,31 @@ export async function refreshSessionControl(
    }
  }
  
