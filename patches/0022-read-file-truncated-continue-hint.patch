@@ -1,0 +1,289 @@
+diff --git a/tests/tools/test_file_read_continue_hint.py b/tests/tools/test_file_read_continue_hint.py
+new file mode 100644
+index 00000000..c2eaee9c
+--- /dev/null
++++ b/tests/tools/test_file_read_continue_hint.py
+@@ -0,0 +1,201 @@
++#!/usr/bin/env python3
++"""
++Tests for the truncated-read continuation hint.
++
++A read that came back truncated used to be followed by a refusal that said
++nothing about WHERE to continue: the dedup stub ("File unchanged since last
++read") and the hard BLOCKED ("still current. Proceed with your task...")
++both left the model re-reading the same region forever (117 blocks recorded
++in the field). The fix records the continuation offset per (path, offset,
++limit) and appends it to the stub, to the dedup BLOCKED and to the
++consecutive-read BLOCKED.
++
++Run with:  python -m pytest tests/tools/test_file_read_continue_hint.py -v
++"""
++import json
++import os
++import shutil
++import unittest
++from unittest.mock import MagicMock, patch
++
++from tools.file_operations_common import ReadResult
++from tools.file_tools import read_file_tool
++from tools.file_tools_read_tracking import _read_tracker, reset_file_dedup
++
++from tests.tools.test_file_read_guards import _make_safe_tempdir
++
++
++# ---------------------------------------------------------------------------
++# Helpers
++# ---------------------------------------------------------------------------
++
++def _make_file_backed_ops():
++    """FileOperations stand-in that serves a page of the REAL file on disk.
++
++    Truncation is therefore decided by the file (total lines vs the requested
++    window), exactly like the shell backend's ``sed -n 'a,bp'`` page, and the
++    payload is the production ``ReadResult``.
++    """
++    fake = MagicMock(env=None)
++
++    def read_file(path, offset=1, limit=2000):
++        with open(path, encoding="utf-8") as handle:
++            lines = handle.read().split("\n")
++        if lines and lines[-1] == "":
++            lines.pop()
++        total_lines = len(lines)
++        end_line = offset + limit - 1
++        page = lines[offset - 1:end_line]
++        truncated = total_lines > end_line
++        return ReadResult(
++            content="".join(line + "\n" for line in page),
++            total_lines=total_lines,
++            file_size=os.path.getsize(path),
++            truncated=truncated,
++            hint=(f"Use offset={end_line + 1} to continue reading "
++                  f"(showing {offset}-{end_line} of {total_lines} lines)")
++            if truncated else None,
++        )
++
++    fake.read_file = read_file
++    return fake
++
++
++class TestTruncatedReadContinueHint(unittest.TestCase):
++    """A refused re-read must name the offset that continues a truncated read."""
++
++    def setUp(self):
++        _read_tracker.clear()
++        self._tmpdir = _make_safe_tempdir("hermes-continue-hint-")
++
++    def tearDown(self):
++        _read_tracker.clear()
++        shutil.rmtree(self._tmpdir, ignore_errors=True)
++
++    def _write_file(self, name, lines):
++        path = os.path.join(self._tmpdir, name)
++        with open(path, "w", encoding="utf-8") as handle:
++            handle.write("".join(line + "\n" for line in lines))
++        return path
++
++    @patch("tools.file_tools._get_file_ops")
++    @patch("tools.tool_output_limits.get_max_lines", return_value=2000)
++    @patch("tools.file_tools._get_max_read_chars", return_value=100_000)
++    def test_line_truncated_read_names_continuation_offset(self, _max_chars, _max_lines, mock_ops):
++        """9000 short lines read with limit=2000 truncates BY LINES: the stub
++        and the BLOCKED that follow must say which offset continues it."""
++        path = self._write_file("lines.txt", [f"line {i}" for i in range(9000)])
++        mock_ops.return_value = _make_file_backed_ops()
++
++        first = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertTrue(first["truncated"])
++        self.assertEqual(first["total_lines"], 9000)
++
++        stub = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertTrue(stub.get("dedup"))
++        self.assertIn("offset=2001", stub["message"])
++
++        blocked = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertIn("BLOCKED", blocked["error"])
++        self.assertIn("offset=2001", blocked["error"])
++
++    @patch("tools.file_tools._get_file_ops")
++    @patch("tools.tool_output_limits.get_max_lines", return_value=2000)
++    @patch("tools.file_tools._get_max_read_chars", return_value=1000)
++    def test_byte_truncated_read_names_continuation_offset(self, _max_chars, _max_lines, mock_ops):
++        """3000 fat lines blow the char budget: the read truncates BY BYTES
++        and reports a next_offset, which the refusals must repeat."""
++        path = self._write_file(
++            "bytes.txt", [f"{i:04d}|" + "z" * 390 for i in range(3000)])
++        mock_ops.return_value = _make_file_backed_ops()
++
++        first = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertTrue(first["truncated"])
++        self.assertEqual(first["truncated_by"], "bytes")
++        next_offset = first["next_offset"]
++        self.assertGreater(next_offset, 1)
++
++        stub = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertTrue(stub.get("dedup"))
++        self.assertIn(f"offset={next_offset}", stub["message"])
++
++        blocked = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertIn("BLOCKED", blocked["error"])
++        self.assertIn(f"offset={next_offset}", blocked["error"])
++
++    @patch("tools.file_tools._get_file_ops")
++    @patch("tools.tool_output_limits.get_max_lines", return_value=2000)
++    @patch("tools.file_tools._get_max_read_chars", return_value=100_000)
++    def test_complete_read_never_names_a_continuation_offset(self, _max_chars, _max_lines, mock_ops):
++        """A short file fits in one page: there is nothing to continue, so the
++        refusals must not invent an offset."""
++        path = self._write_file("short.txt", [f"line {i}" for i in range(50)])
++        mock_ops.return_value = _make_file_backed_ops()
++
++        first = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertNotIn("error", first)
++        self.assertFalse(first.get("truncated"))
++
++        stub = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertTrue(stub.get("dedup"))
++        self.assertNotIn("offset=", stub["message"])
++
++        blocked = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertIn("BLOCKED", blocked["error"])
++        self.assertNotIn("offset=", blocked["error"])
++
++    @patch("tools.file_tools._get_file_ops")
++    @patch("tools.tool_output_limits.get_max_lines", return_value=2000)
++    @patch("tools.file_tools._get_max_read_chars", return_value=100_000)
++    def test_offset_dropped_when_region_stops_truncating(self, _max_chars, _max_lines, mock_ops):
++        """The recorded offset is dropped once the same region is re-read
++        WITHOUT truncating: the later BLOCKED must not point at a stale offset."""
++        path = self._write_file("shrink.txt", [f"line {i}" for i in range(9000)])
++        mock_ops.return_value = _make_file_backed_ops()
++
++        first = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertTrue(first["truncated"])
++
++        # The truncated read recorded an offset, so the first refusal names it.
++        stub = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertTrue(stub.get("dedup"))
++        self.assertIn("offset=2001", stub["message"])
++
++        # The file is rewritten short: the same region no longer truncates.
++        self._write_file("shrink.txt", [f"line {i}" for i in range(50)])
++        second = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertNotIn("error", second)
++        self.assertFalse(second.get("truncated"))
++
++        # The stale offset must be gone from the refusals that follow.
++        stub = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertTrue(stub.get("dedup"))
++        self.assertNotIn("offset=", stub["message"])
++
++        blocked = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++        self.assertIn("BLOCKED", blocked["error"])
++        self.assertNotIn("offset=", blocked["error"])
++
++    @patch("tools.file_tools._get_file_ops")
++    @patch("tools.tool_output_limits.get_max_lines", return_value=2000)
++    @patch("tools.file_tools._get_max_read_chars", return_value=100_000)
++    def test_consecutive_read_block_names_continuation_offset(self, _max_chars, _max_lines, mock_ops):
++        """The "read this exact region N times in a row" BLOCKED also has to
++        name the offset that continues the truncated read."""
++        path = self._write_file("loop.txt", [f"line {i}" for i in range(9000)])
++        mock_ops.return_value = _make_file_backed_ops()
++
++        # Each read is a real one (the compression reset clears the
++        # generation flag), so the consecutive-read guard is what fires.
++        blocked = {}
++        for _ in range(4):
++            result = json.loads(read_file_tool(path, offset=1, limit=2000, task_id="cont"))
++            reset_file_dedup("cont")
++            if "error" in result:
++                blocked = result
++        self.assertIn("BLOCKED", blocked.get("error", ""))
++        self.assertIn("offset=2001", blocked["error"])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tools/file_tools.py b/tools/file_tools.py
+index 237d97d8..5cec3ef3 100644
+--- a/tools/file_tools.py
++++ b/tools/file_tools.py
+@@ -499,6 +499,12 @@ def _read_extracted_document(path: str, _resolved, offset: int, limit: int, task
+     return json.dumps(result_dict, ensure_ascii=False)
+ 
+ 
++def _continue_hint(task_data: dict, dedup_key: tuple) -> str:
++    """Name the offset that continues a truncated read, so a refused re-read points forward."""
++    nxt = task_data["next_offsets"].get(dedup_key)
++    return f" That read was truncated: call read_file with offset={nxt} to continue." if nxt else ""
++
++
+ def _dedup_stub_or_block(task_data: dict, dedup_key: tuple, path: str) -> str:
+     """Return the "unchanged" stub for a repeated identical read, escalating to a
+     hard BLOCK after 2 stubs so weak tool-followers don't loop forever."""
+@@ -506,6 +512,7 @@ def _dedup_stub_or_block(task_data: dict, dedup_key: tuple, path: str) -> str:
+         hits = task_data["dedup_hits"].get(dedup_key, 0) + 1
+         task_data["dedup_hits"][dedup_key] = hits
+         _cap_read_tracker_data(task_data)
++        hint = _continue_hint(task_data, dedup_key)
+ 
+     if hits >= 2:
+         return tool_error(
+@@ -515,7 +522,7 @@ def _dedup_stub_or_block(task_data: dict, dedup_key: tuple, path: str) -> str:
+             "this path — the content from your earlier "
+             "read_file result in this conversation is "
+             "still current. Proceed with your task using "
+-            "the information you already have.",
++            "the information you already have." + hint,
+             path=path,
+             already_read=hits + 1,
+             # A REFUSAL the harness chose, not a failure the tool hit: without the
+@@ -525,7 +532,7 @@ def _dedup_stub_or_block(task_data: dict, dedup_key: tuple, path: str) -> str:
+ 
+     return json.dumps({
+         "status": "unchanged",
+-        "message": _READ_DEDUP_STATUS_MESSAGE,
++        "message": _READ_DEDUP_STATUS_MESSAGE + hint,
+         "path": path,
+         "dedup": True,
+         "content_returned": False,
+@@ -738,11 +745,16 @@ def read_file_tool(path: str, offset: int = 1, limit: int = DEFAULT_READ_LIMIT,
+                                         end_line=end_line, total_lines=total_lines,
+                                         version_before=version_before,
+                                         snapshot=getattr(result, "_snapshot", None))
++        if result_dict.get("truncated"):
++            with _read_tracker_lock:
++                task_data["next_offsets"][dedup_key] = result_dict.get("next_offset") or offset + limit
++        else:
++            task_data["next_offsets"].pop(dedup_key, None)
+         if count >= 4:
+             return tool_error(
+                 f"BLOCKED: You have read this exact file region {count} times in a row. "
+                 "The content has NOT changed. You already have this information. "
+-                "STOP re-reading and proceed with your task.",
++                "STOP re-reading and proceed with your task." + _continue_hint(task_data, dedup_key),
+                 path=path,
+                 already_read=count,
+                 **{GUARDRAIL_REFUSAL_KEY: True})
+diff --git a/tools/file_tools_read_tracking.py b/tools/file_tools_read_tracking.py
+index 1054a422..13032738 100644
+--- a/tools/file_tools_read_tracking.py
++++ b/tools/file_tools_read_tracking.py
+@@ -54,7 +54,7 @@ def _task_data(task_id: str) -> dict:
+     (search_tool / tests create partial entries). Lock must be held."""
+     task_data = _read_tracker.setdefault(task_id, {
+         "last_key": None, "consecutive": 0, "read_history": set()})
+-    for key in ("dedup", "dedup_hits", "read_timestamps", "read_coverage", "full_write_baselines",
++    for key in ("dedup", "dedup_hits", "next_offsets", "read_timestamps", "read_coverage", "full_write_baselines",
+                 "blind_patches"):
+         task_data.setdefault(key, {})
+     task_data.setdefault("dedup_generation_reads", set())
+@@ -89,6 +89,7 @@ def _cap_read_tracker_data(task_data: dict) -> None:
+         ("read_history", _READ_HISTORY_CAP),
+         ("dedup", _DEDUP_CAP),
+         ("dedup_hits", _DEDUP_CAP),
++        ("next_offsets", _DEDUP_CAP),
+         ("dedup_generation_reads", _DEDUP_CAP),
+         ("read_timestamps", _READ_TIMESTAMPS_CAP),
+         ("read_coverage", _READ_TIMESTAMPS_CAP),

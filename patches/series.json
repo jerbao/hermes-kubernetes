@@ -307,6 +307,20 @@
         "tests/agent/test_anthropic_adapter.py",
         "tests/agent/test_prompt_cache_boundary.py"
       ]
+    },
+    {
+      "path": "patches/0022-read-file-truncated-continue-hint.patch",
+      "description": "Name the continuation offset when a refused read_file re-read follows a truncated read",
+      "files": [
+        "tools/file_tools.py",
+        "tools/file_tools_read_tracking.py",
+        "tests/tools/test_file_read_continue_hint.py"
+      ],
+      "native_tests": [
+        "tests/tools/test_file_read_continue_hint.py",
+        "tests/tools/test_file_read_guards.py",
+        "tests/tools/test_file_tools.py"
+      ]
     }
   ]
 }
