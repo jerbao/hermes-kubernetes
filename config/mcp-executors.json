@@ -398,6 +398,14 @@
       "executor": "api",
       "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
     },
+    "rentahuman": {
+      "transport": "http",
+      "identity": {
+        "url": "https://rentahuman.ai/api/mcp"
+      },
+      "executor": "api",
+      "reason": "Remote HTTP endpoint; Hermes uses its native HTTP transport."
+    },
     "robinhood": {
       "transport": "http",
       "identity": {
