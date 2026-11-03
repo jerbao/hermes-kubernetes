@@ -1,6 +1,6 @@
 diff --git a/tests/tools/test_skill_catalog_cache_scopes.py b/tests/tools/test_skill_catalog_cache_scopes.py
 new file mode 100644
-index 00000000..bf515f63
+index 00000000..20848f01
 --- /dev/null
 +++ b/tests/tools/test_skill_catalog_cache_scopes.py
 @@ -0,0 +1,58 @@
@@ -23,7 +23,7 @@ index 00000000..bf515f63
 +        skill.write_text(f"---\nname: {name}\ndescription: {name}\n---\nBody\n")
 +        roots.append(root)
 +    active = [roots[0]]
-+    monkeypatch.setattr(skills, "_skill_search_dirs", lambda: ([(1, active[0])], active[0]))
++    monkeypatch.setattr(skills, "skill_search_dirs", lambda: ([(1, active[0])], active[0]))
 +    monkeypatch.setattr(skills, "_get_disabled_skill_names", lambda: set())
 +    monkeypatch.setattr(skills, "_SKILLS_CACHE", {})
 +    return roots, active
@@ -63,20 +63,20 @@ index 00000000..bf515f63
 +    assert skills._skill_catalog()[0]["name"] == "one"
 +    assert len(reads) == 1
 diff --git a/tools/skills_tool.py b/tools/skills_tool.py
-index 9828e4c3..84edc71a 100644
+index a6f8d186..d3b47c42 100644
 --- a/tools/skills_tool.py
 +++ b/tools/skills_tool.py
-@@ -195,6 +195,9 @@ def _skill_catalog(*, skip_disabled: bool = False, include_hidden: bool = False)
+@@ -237,6 +237,9 @@ def _skill_catalog(*, skip_disabled: bool = False, include_hidden: bool = False)
      disabled = set() if skip_disabled else _get_disabled_skill_names()
-     roots, _ = _skill_search_dirs()
+     roots, _ = skill_search_dirs()
      signature = _skills_scan_signature([d for _t, d in roots], disabled)
 +    # Keep each profile/project's catalog: a different root must not evict this one.
 +    # Mutable directory/disabled state stays in the signature so changes still invalidate it.
-+    cache_key = (*cache_key, tuple(str(d) for _t, d in roots), signature[-1])
++    cache_key = (*cache_key, tuple(str(d) for _t, d in roots), signature[1])
      now = time.monotonic()
      cached = _SKILLS_CACHE.get(cache_key)
      if cached is not None and cached[0] == signature and (now - cached[1]) < _SKILLS_CACHE_TTL_SECONDS:
-@@ -228,7 +231,7 @@ def _skill_catalog(*, skip_disabled: bool = False, include_hidden: bool = False)
+@@ -270,7 +273,7 @@ def _skill_catalog(*, skip_disabled: bool = False, include_hidden: bool = False)
                if (s.pop("visible") or include_hidden) and not is_disabled_entry(s, disabled)]
      # Keyed by the signature computed BEFORE the scan: a write racing the scan changes the
      # signature, so the next call re-scans instead of serving a torn result.

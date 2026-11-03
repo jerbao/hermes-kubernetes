@@ -1,8 +1,8 @@
 diff --git a/agent/skill_utils.py b/agent/skill_utils.py
-index eebbeb15..3f8575c2 100644
+index e885a530..64e418ad 100644
 --- a/agent/skill_utils.py
 +++ b/agent/skill_utils.py
-@@ -2,11 +2,13 @@
+@@ -2,6 +2,7 @@
  Import-light by design: no tool registry, CLI config, or provider resolution."""
  
  import ast
@@ -10,13 +10,7 @@ index eebbeb15..3f8575c2 100644
  import hashlib
  import logging
  import os
- import re
- import sys
-+import threading
- from pathlib import Path, PurePath
- from typing import Any, Callable, Dict, List, Optional, Set, Tuple
- 
-@@ -63,6 +65,27 @@ def yaml_load(content: str):
+@@ -64,6 +65,27 @@ def yaml_load(content: str):
      return _yaml_load_fn(content)
  
  
@@ -44,7 +38,7 @@ index eebbeb15..3f8575c2 100644
  def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
      """Parse YAML frontmatter from markdown; returns (frontmatter_dict, body).
      Malformed YAML falls back to key:value line splitting. A leading UTF-8 BOM
-@@ -75,7 +98,7 @@ def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
+@@ -76,7 +98,7 @@ def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
      body = content[end_match.end() + 3 :]
      frontmatter: dict[str, Any] = {}
      try:

@@ -1,8 +1,8 @@
 diff --git a/apps/desktop/src/app/shell/model-catalog-menu.tsx b/apps/desktop/src/app/shell/model-catalog-menu.tsx
-index 7e344a74..26b1f18a 100644
+index 048db76b..28e6b2c5 100644
 --- a/apps/desktop/src/app/shell/model-catalog-menu.tsx
 +++ b/apps/desktop/src/app/shell/model-catalog-menu.tsx
-@@ -36,7 +36,13 @@ import type { HermesGateway } from '@/hermes'
+@@ -44,7 +44,13 @@ import type { HermesGateway } from '@/hermes'
  import { useI18n } from '@/i18n'
  import { triggerHaptic } from '@/lib/haptics'
  import { isSubmitEnter } from '@/lib/ime'
@@ -17,8 +17,8 @@ index 7e344a74..26b1f18a 100644
  import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
  import { accountResetMs, formatReset, modelResetMs } from '@/lib/provider-limit'
  import { reasoningEffortLabel } from '@/lib/reasoning-effort'
-@@ -274,6 +280,17 @@ export function ModelCatalogMenu({
-     queryFn: (): Promise<ModelOptionsResult> => requestModelOptions({ gateway, profile, request, sessionId })
+@@ -285,6 +291,17 @@ export function ModelCatalogMenu({
+     refetchInterval: query => nousPricingPoll(query.state.data, query.state.dataUpdateCount)
    })
  
 +  // Quota snapshots have their own lightweight RPC and cadence. Refreshing
@@ -35,7 +35,7 @@ index 7e344a74..26b1f18a 100644
    const loading = modelOptions.isPending && !modelOptions.data
  
    // Every local-models read in this menu sits behind the --local launch
-@@ -303,7 +320,15 @@ export function ModelCatalogMenu({
+@@ -314,7 +331,15 @@ export function ModelCatalogMenu({
  
    const error = queryErrorMessage(modelOptions.error)
  
@@ -126,7 +126,7 @@ index e2505540..0b0d2204 100644
 +  fireEvent.pointerMove(chip, { pointerType: 'mouse' })
 +  expect((await screen.findByRole('tooltip')).textContent).toContain('5 hours: 46% left, resets ')
 +  await waitFor(() => expect(requestGateway).toHaveBeenCalledWith('model.usage', { profile: 'default' }))
-+  expect(requestGateway).toHaveBeenCalledWith('model.options', { session_id: 'runtime-1', explicit_only: true, profile: 'default' })
++  expect(requestGateway).toHaveBeenCalledWith('model.options', { session_id: 'runtime-1', explicit_only: true })
 +  expect(requestGateway).not.toHaveBeenCalledWith('model.options', expect.objectContaining({ refresh: true }))
 +})
 +
@@ -187,7 +187,7 @@ index f0657aa0..f3e911c9 100644
  
      presetFor: (provider, model) => modelPresets[modelPresetKey(provider, model)] ?? {},
 diff --git a/apps/desktop/src/lib/model-options.test.ts b/apps/desktop/src/lib/model-options.test.ts
-index 846cf74c..2d26a854 100644
+index 4a2d7882..f1f19a97 100644
 --- a/apps/desktop/src/lib/model-options.test.ts
 +++ b/apps/desktop/src/lib/model-options.test.ts
 @@ -8,7 +8,8 @@ import {
@@ -200,7 +200,7 @@ index 846cf74c..2d26a854 100644
  } from './model-options'
  
  const globalOptions = { model: 'hermes-4', provider: 'nous', providers: [] }
-@@ -264,6 +265,35 @@ describe('moaPickRemoved', () => {
+@@ -266,6 +267,35 @@ describe('moaPickRemoved', () => {
    })
  })
  
@@ -237,7 +237,7 @@ index 846cf74c..2d26a854 100644
    it('flags a bare pick the default has migrated to its custom-provider form (#81922)', () => {
      // The wire payload for `nvidia` builds the NATIVE provider and drops the
 diff --git a/apps/desktop/src/lib/model-options.ts b/apps/desktop/src/lib/model-options.ts
-index 2c8635c7..5c7e87fd 100644
+index 97f9e765..84afad4e 100644
 --- a/apps/desktop/src/lib/model-options.ts
 +++ b/apps/desktop/src/lib/model-options.ts
 @@ -28,6 +28,28 @@ export function findCatalogProvider<T extends CatalogProviderIdentity>(
@@ -312,10 +312,10 @@ index 2c8635c7..5c7e87fd 100644
    profile: null | string | undefined,
    sessionId?: null | string,
 diff --git a/apps/shared/src/gateway-contract.generated.ts b/apps/shared/src/gateway-contract.generated.ts
-index 3c7b1b5b..3504a640 100644
+index 57a5f6d6..689f4a83 100644
 --- a/apps/shared/src/gateway-contract.generated.ts
 +++ b/apps/shared/src/gateway-contract.generated.ts
-@@ -788,6 +788,7 @@ export interface ModelOptionProvider {
+@@ -827,6 +827,7 @@ export interface ModelOptionProvider {
    slug: string
    name: string
    models?: string[]
@@ -323,7 +323,7 @@ index 3c7b1b5b..3504a640 100644
    total_models?: number | null
    is_current?: boolean | null
    is_user_defined?: boolean | null
-@@ -853,6 +854,13 @@ export interface ProviderUsageAccount {
+@@ -894,6 +895,13 @@ export interface ProviderUsageAccount {
    state: 'ready' | 'limited' | 'unknown' | 'unavailable'
    resets_at?: string | null
  }
@@ -337,7 +337,7 @@ index 3c7b1b5b..3504a640 100644
  export interface ImageGenerateParams {
    prompt?: string | null
    aspect_ratio?: string | null
-@@ -5219,6 +5227,8 @@ export interface RpcMethods {
+@@ -6281,6 +6289,8 @@ export interface RpcMethods {
    'model.options': { params: ModelOptionsParams; result: ModelOptionsResult }
    /** Save an API key for a provider and return its refreshed inventory row. */
    'model.save_key': { params: ModelSaveKeyParams; result: ModelSaveKeyResult }
@@ -346,7 +346,7 @@ index 3c7b1b5b..3504a640 100644
    /** Write onboarding.run in the root profile's config.yaml; answers the new state. */
    'onboarding.set_run': { params: OnboardingSetRunParams; result: OnboardingRunStateResult }
    /** Skip setup: end the session's onboarding run and close the card that waits. */
-@@ -5622,6 +5632,7 @@ export const RPC_METHODS = [
+@@ -6687,6 +6697,7 @@ export const RPC_METHODS = [
    'model.disconnect',
    'model.options',
    'model.save_key',
@@ -355,10 +355,10 @@ index 3c7b1b5b..3504a640 100644
    'onboarding.skip',
    'onboarding.start',
 diff --git a/apps/shared/src/gateway-contract.openrpc.json b/apps/shared/src/gateway-contract.openrpc.json
-index fe5067d6..7d823b35 100644
+index 0e7e02c8..02a5d4b6 100644
 --- a/apps/shared/src/gateway-contract.openrpc.json
 +++ b/apps/shared/src/gateway-contract.openrpc.json
-@@ -1986,6 +1986,24 @@
+@@ -2040,6 +2040,24 @@
          }
        }
      },
@@ -383,7 +383,7 @@ index fe5067d6..7d823b35 100644
      {
        "name": "onboarding.set_run",
        "summary": "Write onboarding.run in the root profile's config.yaml; answers the new state.",
-@@ -19385,6 +19403,18 @@
+@@ -24320,6 +24338,18 @@
              "title": "Models",
              "type": "array"
            },
@@ -402,7 +402,7 @@ index fe5067d6..7d823b35 100644
            "total_models": {
              "anyOf": [
                {
-@@ -19836,6 +19866,51 @@
+@@ -24797,6 +24827,51 @@
          "title": "ModelSaveKeyResult",
          "type": "object"
        },
@@ -455,10 +455,10 @@ index fe5067d6..7d823b35 100644
          "additionalProperties": false,
          "description": "``tui_gateway/model_switch.py`` capability-refresh notice.",
 diff --git a/hermes_cli/model_switch_providers.py b/hermes_cli/model_switch_providers.py
-index 270b98cd..fd555055 100644
+index ac335623..79c669ca 100644
 --- a/hermes_cli/model_switch_providers.py
 +++ b/hermes_cli/model_switch_providers.py
-@@ -1337,6 +1337,11 @@ def _finalize_picker_rows(results: list, user_providers, current_model: str) ->
+@@ -1343,6 +1343,11 @@ def _finalize_picker_rows(results: list, user_providers, current_model: str) ->
                  if _model_requires_account_discovery(row.get("slug"), current_model):
                      break
                  row["models"] = [current_model, *models]
@@ -471,7 +471,7 @@ index 270b98cd..fd555055 100644
              break
  
 diff --git a/tests/hermes_cli/test_user_providers_model_switch.py b/tests/hermes_cli/test_user_providers_model_switch.py
-index 76a1bc6a..09a90ec1 100644
+index 8491752c..ad881343 100644
 --- a/tests/hermes_cli/test_user_providers_model_switch.py
 +++ b/tests/hermes_cli/test_user_providers_model_switch.py
 @@ -630,6 +630,7 @@ def test_current_custom_model_is_surfaced_in_builtin_provider_row(monkeypatch):
@@ -483,7 +483,7 @@ index 76a1bc6a..09a90ec1 100644
  
  
 diff --git a/tui_gateway/contracts/config_free_tier_control.py b/tui_gateway/contracts/config_free_tier_control.py
-index ba390944..c4082888 100644
+index a7346e3f..2b6253f0 100644
 --- a/tui_gateway/contracts/config_free_tier_control.py
 +++ b/tui_gateway/contracts/config_free_tier_control.py
 @@ -453,6 +453,10 @@ class ModelOptionsParams(ProfileParams):
@@ -505,7 +505,7 @@ index ba390944..c4082888 100644
      total_models: int | None = None
      is_current: bool | None = None
      is_user_defined: bool | None = None
-@@ -568,8 +573,15 @@ class ModelOptionsResult(Result):
+@@ -571,8 +576,15 @@ class ModelOptionsResult(Result):
      provider: str = ""
  
  
@@ -522,10 +522,10 @@ index ba390944..c4082888 100644
  
  # ── image.generate ────────────────────────────────────────────────────────────────────────────
 diff --git a/tui_gateway/methods_complete.py b/tui_gateway/methods_complete.py
-index 91a4f96e..1d328799 100644
+index ea2b069c..32a9a401 100644
 --- a/tui_gateway/methods_complete.py
 +++ b/tui_gateway/methods_complete.py
-@@ -369,6 +369,22 @@ def _(rid, params: dict) -> dict:
+@@ -331,6 +331,22 @@ def _(rid, params: dict) -> dict:
          include_unconfigured=bool(params.get("include_unconfigured")), refresh=bool(params.get("refresh"))))
  
  

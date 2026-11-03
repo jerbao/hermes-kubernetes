@@ -211,7 +211,7 @@
       "description": "Keep command catalog discovery off the WebSocket dispatcher and time its stages",
       "files": [
         "tui_gateway/server.py",
-        "tui_gateway/methods_tools.py",
+        "tui_gateway/command_discovery.py",
         "tests/tui_gateway/test_slow_poll_dispatch.py"
       ],
       "native_tests": [

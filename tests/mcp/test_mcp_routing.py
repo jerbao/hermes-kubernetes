@@ -134,10 +134,10 @@ class McpRoutingTests(unittest.TestCase):
         configured = fixture["servers"]
         catalog_names = set(self.catalog["catalog"])
         configured_names = {entry["name"] for entry in configured}
-        self.assertEqual(len(catalog_names), 65)
+        self.assertEqual(len(catalog_names), 66)  # upstream v0.22.5 catalog adds rentahuman
         self.assertEqual(len(configured_names), 10)
         self.assertEqual(catalog_names & configured_names, {"aws-knowledge", "context7", "gitlab"})
-        self.assertEqual(len(catalog_names | configured_names), 72)
+        self.assertEqual(len(catalog_names | configured_names), 73)
 
         for entry in configured:
             if entry["transport"] == "http":

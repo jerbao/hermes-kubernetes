@@ -1,24 +1,24 @@
 {
   "schema": 1,
   "repository": "https://github.com/NousResearch/hermes-agent",
-  "revision": "d923a5eb487a17c0a68801bba9ef0f56c81040a8",
+  "revision": "bf0203a794a07aac3ff764972ab9087baa4e4f4e",
   "release": {
-    "tag": "v0.22.2",
-    "commit": "d923a5eb487a17c0a68801bba9ef0f56c81040a8",
-    "id": 413474259,
-    "published_at": "2026-10-15T08:21:32Z",
-    "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.2"
+    "tag": "v0.22.5",
+    "commit": "bf0203a794a07aac3ff764972ab9087baa4e4f4e",
+    "id": 421389285,
+    "published_at": "2026-10-23T05:28:45Z",
+    "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.5"
   },
   "patches": [
     {
       "path": "patches/0001-runtime-almalinux.patch",
-      "sha256": "270f306be99cf7ea5a5ddf0c32f9b209434241576958820f348bd1107b591f81",
+      "sha256": "cf92584db47c0ce538fc02f0af49ba2c9d907ba4bca413160c6858f34fc308ae",
       "description": "AlmaLinux x86-64-v2 image and runtime dependencies",
       "native_tests": []
     },
     {
       "path": "patches/0002-ssh-terminal.patch",
-      "sha256": "346bb10d485c3b6f6237f9d542388484a7df16538b71c50167bd7bcf85c165bf",
+      "sha256": "7e1fd7ea1c5009d2b508156fe0f81b678d4a3e1fa5fbeda305c4b48207bbe23d",
       "description": "SSH transport, file synchronization and profile isolation",
       "native_tests": [
         "tests/tools/test_ssh_command_batches.py",
@@ -73,7 +73,7 @@
     },
     {
       "path": "patches/0008-quota-refresh-and-route-reconciliation.patch",
-      "sha256": "9d1c908b45e08e9975e96b1ce58660d9f16740f61bc47d389dc3fe1688616fbb",
+      "sha256": "ca978dfa0a2743b4ae9137f8dd378bd164157ec673069b0196f33b0f5e624054",
       "description": "Refresh subscription usage independently and reconcile stale provider/model pairs by unique catalog ownership",
       "native_tests": [
         "tests/hermes_cli/test_proxy_subscription_usage.py",
@@ -93,7 +93,7 @@
       "path": "patches/0010-desktop-session-control-reconnect.patch",
       "description": "Refresh active session controls after gateway reconnects",
       "native_tests": [],
-      "sha256": "d337f79e9d2db3a3c2b148895c5ad5ede5e1a21ee0e7b70165de416c8ec6ada1"
+      "sha256": "a65ac2ec3b70633df4cd1badc0e3b8952fd7070ab7a3d90725bc4a3ab83227f4"
     },
     {
       "path": "patches/0011-approval-rpc-cold-agent.patch",
@@ -139,7 +139,7 @@
         "tests/tui_gateway/test_slow_poll_dispatch.py",
         "tests/tui_gateway/test_command_description_fidelity.py"
       ],
-      "sha256": "5cc59e1424e36eb795050966fc9c81de583f4ba461d065eb8aec5ffcf12002ce"
+      "sha256": "81d69ad438f65f41fcc8fd14755a17b2f270890136bfca845599af72d0cef5a8"
     },
     {
       "path": "patches/0016-skill-catalog-cache-scopes.patch",
@@ -148,7 +148,7 @@
         "tests/tools/test_skill_catalog_cache_scopes.py",
         "tests/tools/test_skills_tool.py"
       ],
-      "sha256": "94ac09d2a13c8e79aaa9feb7c7a23d8f4916e0341df159ac27b93d6e31f5f3f2"
+      "sha256": "55be7a7433956d2c0cae48aa28243b9f5a0a8a1932c01f64c00b956897898307"
     },
     {
       "path": "patches/0017-display-order-after-prompt-rewrite.patch",
@@ -165,7 +165,7 @@
     },
     {
       "path": "patches/0018-skill-frontmatter-cache.patch",
-      "sha256": "01c8e263fe7124b20810b2a43fd3afebe9a95dba21afb6620544bfda9efa6399",
+      "sha256": "1056e53c7180b61b64e2b410cf25e6da77fe85fef95b808556ec1a7c66443eac",
       "description": "Parse each distinct skill frontmatter once per process",
       "native_tests": [
         "tests/agent/test_skill_frontmatter_cache.py",
