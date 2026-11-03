@@ -1,8 +1,8 @@
 diff --git a/hermes_state.py b/hermes_state.py
-index 510e257b..b2aea7f2 100644
+index 30b8d929f8..cd933424cc 100644
 --- a/hermes_state.py
 +++ b/hermes_state.py
-@@ -594,7 +594,7 @@ class SessionDB(
+@@ -598,7 +598,7 @@ class SessionDB(
              pass  # Diagnostic metadata must not prevent opening the database.
          finally:
              del caller
@@ -11,7 +11,7 @@ index 510e257b..b2aea7f2 100644
          # Read-path split (WAL only): reads borrow from a BOUNDED read-only pool so they
          # never queue behind writer flushes on self._lock (see _read_ctx); unbounded
          # per-thread connections pinned fds for the process lifetime and hit EMFILE.
-@@ -858,14 +858,18 @@ class SessionDB(
+@@ -869,14 +869,18 @@ class SessionDB(
          readers hit SQLITE_BUSY storms, so the legacy locked path stays. Autocommit
          reads see everything committed so far (read-your-writes for flush-then-search)."""
          if not self._wal_active or self.read_only:
@@ -30,7 +30,7 @@ index 510e257b..b2aea7f2 100644
              logger.debug(
                  "read pool at capacity (%d) for %s; serving this read from the "
                  "locked writer connection", _READ_POOL_MAX, self.db_path,
-@@ -888,6 +892,7 @@ class SessionDB(
+@@ -899,6 +903,7 @@ class SessionDB(
                  raise
              with self._read_conns_lock:
                  self._read_open_failed_at = time.monotonic()
@@ -38,7 +38,7 @@ index 510e257b..b2aea7f2 100644
              logger.debug("read-only connection open failed for %s", self.db_path, exc_info=True)
              return None
          return conn
-@@ -913,6 +918,8 @@ class SessionDB(
+@@ -924,6 +929,8 @@ class SessionDB(
          """Borrow a read connection, opening on a miss; None when the read path is unavailable.
          A pool hit costs no permit (the connection already holds one)."""
          if not self._wal_active or self.read_only:
@@ -48,7 +48,7 @@ index 510e257b..b2aea7f2 100644
          try:
              return self._read_pool.get_nowait()
 diff --git a/hermes_state_lock_timing.py b/hermes_state_lock_timing.py
-index d5c4e916..c261ba91 100644
+index d5c4e916e4..c261ba91e4 100644
 --- a/hermes_state_lock_timing.py
 +++ b/hermes_state_lock_timing.py
 @@ -7,6 +7,7 @@ can be measured against normal use without logging every acquisition."""
@@ -90,7 +90,7 @@ index d5c4e916..c261ba91 100644
          self._wait_total = self._wait_max = self._hold_total = self._hold_max = 0.0
 diff --git a/tests/hermes_state/test_read_path_diagnostics.py b/tests/hermes_state/test_read_path_diagnostics.py
 new file mode 100644
-index 00000000..07c19e6d
+index 0000000000..07c19e6da7
 --- /dev/null
 +++ b/tests/hermes_state/test_read_path_diagnostics.py
 @@ -0,0 +1,54 @@

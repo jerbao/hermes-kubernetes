@@ -1,5 +1,5 @@
 diff --git a/hermes_cli/goals.py b/hermes_cli/goals.py
-index c00618e3..a3aa352f 100644
+index 96ee695e28..b7238cd651 100644
 --- a/hermes_cli/goals.py
 +++ b/hermes_cli/goals.py
 @@ -747,6 +747,37 @@ def _session_waiting(session_id: str) -> bool:
@@ -40,7 +40,7 @@ index c00618e3..a3aa352f 100644
  _JSON_OBJECT_RE = re.compile(r"\{.*?\}", re.DOTALL)
  
  
-@@ -1415,24 +1446,12 @@ class GoalManager:
+@@ -1419,24 +1450,12 @@ class GoalManager:
          s = self._state
          if s is None:
              return False
@@ -70,7 +70,7 @@ index c00618e3..a3aa352f 100644
          return still
  
 diff --git a/hermes_cli/loops.py b/hermes_cli/loops.py
-index ab93f877..20e60f19 100644
+index ab93f87785..20e60f1925 100644
 --- a/hermes_cli/loops.py
 +++ b/hermes_cli/loops.py
 @@ -610,15 +610,17 @@ class LoopManager:
@@ -94,10 +94,10 @@ index ab93f877..20e60f19 100644
          return mgr.is_active() and not mgr.is_waiting()
      except Exception:
 diff --git a/hermes_state.py b/hermes_state.py
-index e50b059a..2bad0da6 100644
+index 6a7ae61540..270abe600e 100644
 --- a/hermes_state.py
 +++ b/hermes_state.py
-@@ -1635,6 +1635,24 @@ class SessionDB(
+@@ -1650,6 +1650,24 @@ class SessionDB(
              row = self._conn.execute("SELECT value FROM state_meta WHERE key = ?", (key,)).fetchone()
          return None if row is None else row[0]
  
@@ -123,7 +123,7 @@ index e50b059a..2bad0da6 100644
          """Upsert state_meta[key]; with ``cursor`` the write is inline (the caller already holds a
          transaction — nesting BEGIN IMMEDIATE would deadlock)."""
 diff --git a/tests/hermes_cli/test_loops.py b/tests/hermes_cli/test_loops.py
-index 79366838..e16394a1 100644
+index 79366838d9..e16394a10a 100644
 --- a/tests/hermes_cli/test_loops.py
 +++ b/tests/hermes_cli/test_loops.py
 @@ -580,6 +580,36 @@ class TestGoalMixing:
@@ -164,7 +164,7 @@ index 79366838..e16394a1 100644
  # ──────────────────────────────────────────────────────────────────────
  # dispatch_loop_command (shared slash handler)
 diff --git a/tests/tui_gateway/test_session_control.py b/tests/tui_gateway/test_session_control.py
-index 27ae37c6..11d20312 100644
+index a7bf5044b9..330e2ab6c5 100644
 --- a/tests/tui_gateway/test_session_control.py
 +++ b/tests/tui_gateway/test_session_control.py
 @@ -4,9 +4,11 @@ from __future__ import annotations
@@ -230,10 +230,10 @@ index 27ae37c6..11d20312 100644
          from hermes_cli.goals import GoalContract, GoalGate
  
 diff --git a/tui_gateway/methods_session_control.py b/tui_gateway/methods_session_control.py
-index 4f9160a8..9a7bcd95 100644
+index 456132b9c0..4898a50c14 100644
 --- a/tui_gateway/methods_session_control.py
 +++ b/tui_gateway/methods_session_control.py
-@@ -135,17 +135,33 @@ def _safe_heartbeat_snapshot(state) -> dict | None:
+@@ -136,17 +136,33 @@ def _safe_heartbeat_snapshot(state) -> dict | None:
      }
  
  
@@ -272,7 +272,7 @@ index 4f9160a8..9a7bcd95 100644
      )
      goal = _safe_goal_snapshot(goal_state)
      loop = _safe_loop_snapshot(loop_state, deferred_by_goal=deferred_by_goal)
-@@ -185,28 +201,10 @@ def _snapshot_updated_at(goal_state, loop_state, heartbeat_state):
+@@ -186,28 +202,10 @@ def _snapshot_updated_at(goal_state, loop_state, heartbeat_state):
      return max(candidates) if candidates else 0
  
  
@@ -303,7 +303,7 @@ index 4f9160a8..9a7bcd95 100644
  
  
  # Slash commands whose success changes the snapshot; ``command.dispatch`` (/goal, /loop built-ins) and the
-@@ -235,6 +233,7 @@ def _publish_session_control_snapshot(sid: str, session: dict | None, *, only_if
+@@ -256,6 +254,7 @@ def _publish_session_control_snapshot(sid: str, session: dict | None, *, only_if
  @_profile_scoped
  def _(rid, params: dict) -> dict:
      """Return the current stable control snapshot for a live session."""
@@ -311,7 +311,7 @@ index 4f9160a8..9a7bcd95 100644
      session, err = _sess_nowait(params, rid)
      if err:
          return err
-@@ -242,10 +241,14 @@ def _(rid, params: dict) -> dict:
+@@ -263,10 +262,14 @@ def _(rid, params: dict) -> dict:
      if not session_key:
          return _err(rid, 4001, "session has no stored key")
      try:
@@ -330,12 +330,13 @@ index 4f9160a8..9a7bcd95 100644
  
  @method("session.control")
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
-index 849d42bf..f22a9588 100644
+index 8ed1c785c8..f196118923 100644
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
-@@ -194,5 +194,6 @@ _LONG_HANDLERS = frozenset({
+@@ -199,6 +199,7 @@ _LONG_HANDLERS = frozenset({
+     "wake.status", "session.active_list", "session.branch", "session.compress", "session.list",
      "session.resume", "session.save", "session.workspace.move", "shell.exec", "skills.manage", "slash.exec",
-     "onboarding.start", "onboarding.state",
+     "onboarding.start", "onboarding.state", "subagent.roster",
 +    "session.control.read",  # WAL snapshot read; keep shared-DB contention off the WS dispatcher
      "command.dispatch",  # /goal draft invokes the auxiliary model; never block the RPC reader
      "shared_metrics.set",  # consent reconcile waits on the metrics store's write lock

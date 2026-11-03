@@ -1,5 +1,5 @@
 diff --git a/apps/desktop/src/app/shell/model-menu-panel.test.tsx b/apps/desktop/src/app/shell/model-menu-panel.test.tsx
-index 5b1f3088..e2505540 100644
+index 5b1f308897..e250554011 100644
 --- a/apps/desktop/src/app/shell/model-menu-panel.test.tsx
 +++ b/apps/desktop/src/app/shell/model-menu-panel.test.tsx
 @@ -84,6 +84,40 @@ function renderPanel(onSelectModel = vi.fn(), onFollowDefaultModel?: () => void)
@@ -44,7 +44,7 @@ index 5b1f3088..e2505540 100644
    it('selecting a MoA preset switches PERSISTENTLY via onSelectModel (not the one-shot dispatch)', async () => {
      const { content, onSelectModel } = renderPanel()
 diff --git a/apps/desktop/src/components/provider-status-chip.test.tsx b/apps/desktop/src/components/provider-status-chip.test.tsx
-index 64289654..852ae63d 100644
+index 64289654f2..852ae63da7 100644
 --- a/apps/desktop/src/components/provider-status-chip.test.tsx
 +++ b/apps/desktop/src/components/provider-status-chip.test.tsx
 @@ -76,3 +76,38 @@ it('only presents a pool-wide wall when every account is limited, preserving unk
@@ -87,7 +87,7 @@ index 64289654..852ae63d 100644
 +  expect(tip.textContent).not.toMatch(/7 days|Fable|resets/)
 +})
 diff --git a/apps/desktop/src/components/provider-status-chip.tsx b/apps/desktop/src/components/provider-status-chip.tsx
-index bf463b1d..9aace462 100644
+index bf463b1db8..9aace4620f 100644
 --- a/apps/desktop/src/components/provider-status-chip.tsx
 +++ b/apps/desktop/src/components/provider-status-chip.tsx
 @@ -49,11 +49,10 @@ function poolChipState(provider: ModelOptionProvider, copy: ModelMenuTranslation

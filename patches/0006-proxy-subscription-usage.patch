@@ -1,8 +1,8 @@
 diff --git a/hermes_cli/config.py b/hermes_cli/config.py
-index f4373503..85575482 100644
+index efb88b892b..9f7969079e 100644
 --- a/hermes_cli/config.py
 +++ b/hermes_cli/config.py
-@@ -948,6 +948,7 @@ def get_missing_skill_config_vars() -> List[Dict[str, Any]]:
+@@ -946,6 +946,7 @@ def get_missing_skill_config_vars() -> list[dict[str, Any]]:
  # defaults are accepted automatically. These optional/legacy roots are valid on disk but
  # intentionally absent from DEFAULT_CONFIG (omitted when unused / alternate schema forms).
  _EXTRA_KNOWN_ROOT_KEYS = {
@@ -11,10 +11,10 @@ index f4373503..85575482 100644
      "fallback_model",    # optional single dict or chain list; omitted when disabled
      "mcp_servers",       # MCP server definitions written by setup/tools flows
 diff --git a/hermes_cli/inventory.py b/hermes_cli/inventory.py
-index 2175b781..1696e8cd 100644
+index d7d17649a0..b76a80c174 100644
 --- a/hermes_cli/inventory.py
 +++ b/hermes_cli/inventory.py
-@@ -352,6 +352,13 @@ def _apply_usage(rows: list[dict]) -> None:
+@@ -356,6 +356,13 @@ def _apply_usage(rows: list[dict]) -> None:
              row["usage"] = {"accounts": accounts}
      refresh_account_usage_async(wanted)
      refresh_account_usage_entries_async(entry_requests)
@@ -30,7 +30,7 @@ index 2175b781..1696e8cd 100644
  # A window this spent counts as exhausted when computing an account's recovery time.
 diff --git a/tests/hermes_cli/test_proxy_subscription_usage.py b/tests/hermes_cli/test_proxy_subscription_usage.py
 new file mode 100644
-index 00000000..a7969bf1
+index 0000000000..a7969bf1bc
 --- /dev/null
 +++ b/tests/hermes_cli/test_proxy_subscription_usage.py
 @@ -0,0 +1,43 @@

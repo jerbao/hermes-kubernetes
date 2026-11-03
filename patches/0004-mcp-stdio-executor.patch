@@ -1,8 +1,8 @@
 diff --git a/hermes_cli/config_defaults.py b/hermes_cli/config_defaults.py
-index afa89f42..38d0168b 100644
+index dd17e45334..151f09ebb6 100644
 --- a/hermes_cli/config_defaults.py
 +++ b/hermes_cli/config_defaults.py
-@@ -538,6 +538,9 @@ DEFAULT_CONFIG = {
+@@ -525,6 +525,9 @@ DEFAULT_CONFIG = {
      # still only wait their real handshake time.
      "mcp_single_query_discovery_timeout": 15.0,
      "mcp": {  # MCP runtime behavior (distinct from mcp_servers: definitions and auxiliary.mcp).
@@ -14,7 +14,7 @@ index afa89f42..38d0168b 100644
          # re-sends the full prefix) — costly on long-context models. When false the watcher still
 diff --git a/tests/tools/test_mcp_stdio_executor.py b/tests/tools/test_mcp_stdio_executor.py
 new file mode 100644
-index 00000000..4f97046c
+index 0000000000..4f97046c66
 --- /dev/null
 +++ b/tests/tools/test_mcp_stdio_executor.py
 @@ -0,0 +1,65 @@
@@ -85,7 +85,7 @@ index 00000000..4f97046c
 +    assert checked == [('npx', ['fixture@1.0'])]
 diff --git a/tests/tui_gateway/test_mcp_catalog_rpc_transport.py b/tests/tui_gateway/test_mcp_catalog_rpc_transport.py
 new file mode 100644
-index 00000000..4d93168d
+index 0000000000..4d93168d90
 --- /dev/null
 +++ b/tests/tui_gateway/test_mcp_catalog_rpc_transport.py
 @@ -0,0 +1,52 @@
@@ -142,10 +142,10 @@ index 00000000..4d93168d
 +    }
 +    assert all("TransportSpec" not in row["transport"] for row in rows)
 diff --git a/tools/mcp_tool.py b/tools/mcp_tool.py
-index 91d8aef0..ff546dd4 100644
+index 8992500c5e..5357707af3 100644
 --- a/tools/mcp_tool.py
 +++ b/tools/mcp_tool.py
-@@ -36,7 +36,7 @@ from tools.mcp_tool_health import MCPServerHealthMixin
+@@ -35,7 +35,7 @@ from tools.mcp_tool_health import MCPServerHealthMixin
  _OSV_MALWARE_CHECK_TIMEOUT_S = 12.0
  
  
@@ -154,7 +154,10 @@ index 91d8aef0..ff546dd4 100644
      """OSV malware preflight (off-loop, wall-clock bound, fail-open on timeout), THEN the
      cached-npx swap. The preflight must see the REAL command/args: anything that rewrites argv to a
      wrapper or resolved binary has to happen after it, or the check silently inspects the wrapper
-@@ -56,3 +56,5 @@ async def _preflight_stdio_command(server_name: str, command: str, args: list) -
+@@ -52,6 +52,8 @@ async def _preflight_stdio_command(server_name: str, command: str, args: list) -
+     if malware_error:
+         raise ValueError(f"MCP server '{server_name}': {malware_error}")
+ 
 +    if remote:
 +        return command, args
      # npx resolves the package and then FORKS, staying resident as the real server's parent for
@@ -162,7 +165,7 @@ index 91d8aef0..ff546dd4 100644
      # supervisor), so a cached package is spawned directly; a cache miss leaves npx untouched.
 diff --git a/tools/mcp_tool_executor.py b/tools/mcp_tool_executor.py
 new file mode 100644
-index 00000000..067c2f19
+index 0000000000..067c2f1949
 --- /dev/null
 +++ b/tools/mcp_tool_executor.py
 @@ -0,0 +1,34 @@
@@ -201,10 +204,10 @@ index 00000000..067c2f19
 +                                                  "state_home": str(home), "ssh_home": str(root)})
 +    return executor["command"], executor.get("args", []), child_env, None
 diff --git a/tools/mcp_tool_transport.py b/tools/mcp_tool_transport.py
-index 47ac05b2..0a481f06 100644
+index 8aa7249f2b..72b852a798 100644
 --- a/tools/mcp_tool_transport.py
 +++ b/tools/mcp_tool_transport.py
-@@ -124,7 +124,11 @@ def _http_endpoint(server_name: str, config: dict) -> tuple[str, dict]:
+@@ -126,7 +126,11 @@ def _http_endpoint(server_name: str, config: dict) -> tuple[str, dict]:
  
  def _stdio_launch(config: dict) -> tuple:
      """(command, env, cwd) a stdio child is spawned with, resolved in the current profile's scope."""
@@ -217,7 +220,7 @@ index 47ac05b2..0a481f06 100644
      # A stdio child inherits this process's cwd when none is configured. Hosted sessions (ACP,
      # gateway) pin a logical cwd via agent.runtime_cwd; without it the child resolves relative
      # paths against the daemon's launch dir, not the session workspace. Explicit config always
-@@ -367,7 +371,15 @@ class MCPServerTransportMixin:
+@@ -378,7 +382,15 @@ class MCPServerTransportMixin:
          self._resolved_identity = _registration._identity_digest(inputs)
          command, safe_env, stdio_cwd = inputs
          # OSV malware preflight, then the cached-npx swap (ordering enforced there).
@@ -235,10 +238,10 @@ index 47ac05b2..0a481f06 100644
              command=command, args=args, env=safe_env or None, cwd=stdio_cwd,
              # Windows pipes can split non-UTF-8 bytes at chunk boundaries; substitute, don't raise.
 diff --git a/tui_gateway/methods_tools.py b/tui_gateway/methods_tools.py
-index d19dfcf7..b9c75f64 100644
+index 2bd46cb1db..194a2dfc32 100644
 --- a/tui_gateway/methods_tools.py
 +++ b/tui_gateway/methods_tools.py
-@@ -1534,13 +1534,15 @@ def _(rid, params: dict) -> dict:
+@@ -1451,13 +1451,15 @@ def _(rid, params: dict) -> dict:
              requires = [str(k) for k in (getattr(entry, "env_keys", None) or [])]
          except Exception:
              requires = []

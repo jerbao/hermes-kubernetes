@@ -1,8 +1,8 @@
 diff --git a/agent/prompt_caching.py b/agent/prompt_caching.py
-index f479646f..c2c9fc56 100644
+index 1612ef56ab..5ca63805bc 100644
 --- a/agent/prompt_caching.py
 +++ b/agent/prompt_caching.py
-@@ -99,9 +99,16 @@ def _can_carry_marker(msg: dict, native_anthropic: bool, tool_part_markers: bool
+@@ -114,9 +114,16 @@ def _can_carry_marker(msg: dict, native_anthropic: bool, tool_part_markers: bool
      return isinstance(content[-1], dict) if isinstance(content, list) and content else isinstance(content, str) and content != ""
  
  
@@ -22,7 +22,7 @@ index f479646f..c2c9fc56 100644
  
  
  # Alibaba-family providers (Qwen routes): five-minute context cache, 1h tier rejected. Shared
-@@ -311,7 +318,7 @@ def build_prompt_cache_plan(
+@@ -326,7 +333,7 @@ def build_prompt_cache_plan(
          return PromptCachePlan(messages=planned_messages, tools=planned_tools)
  
      messages = _strip_prior_decoration(list(api_messages or []))
@@ -31,7 +31,7 @@ index f479646f..c2c9fc56 100644
      if messages and isinstance(messages[0], dict) and messages[0].get("role") == "system":
          # Tool-cache layout: only the static prefix carries a system-side marker; the
          # volatile suffix's budget is spent on the tools array.
-@@ -344,7 +351,7 @@ def apply_anthropic_cache_control(
+@@ -359,7 +366,7 @@ def apply_anthropic_cache_control(
          return api_messages
  
      messages = _strip_prior_decoration(list(api_messages))
@@ -41,7 +41,7 @@ index f479646f..c2c9fc56 100644
      breakpoints_used = 0
      if messages[0].get("role") == "system":
 diff --git a/tests/agent/test_anthropic_adapter.py b/tests/agent/test_anthropic_adapter.py
-index 132c8416..77070072 100644
+index 132c84163c..770700720c 100644
 --- a/tests/agent/test_anthropic_adapter.py
 +++ b/tests/agent/test_anthropic_adapter.py
 @@ -768,7 +768,7 @@ class TestConvertMessages:
@@ -72,7 +72,7 @@ index 132c8416..77070072 100644
  
      def test_empty_user_message_string_gets_placeholder(self):
 diff --git a/tests/agent/test_prompt_cache_boundary.py b/tests/agent/test_prompt_cache_boundary.py
-index 40eb5b6f..3b09eb87 100644
+index 40eb5b6fde..3b09eb871a 100644
 --- a/tests/agent/test_prompt_cache_boundary.py
 +++ b/tests/agent/test_prompt_cache_boundary.py
 @@ -30,6 +30,7 @@ from agent.prompt_caching import (
@@ -102,7 +102,7 @@ index 40eb5b6f..3b09eb87 100644
          assert "ticket=one" not in first_blocks[0]["text"]
          assert "cache_control" not in first_blocks[1]
 diff --git a/tests/agent/test_prompt_cache_ttl_propagation.py b/tests/agent/test_prompt_cache_ttl_propagation.py
-index 66a871e8..a2e8173d 100644
+index 668af18165..716590ed08 100644
 --- a/tests/agent/test_prompt_cache_ttl_propagation.py
 +++ b/tests/agent/test_prompt_cache_ttl_propagation.py
 @@ -150,7 +150,7 @@ class TestMoACacheControlThreadsTtl:
@@ -124,7 +124,7 @@ index 66a871e8..a2e8173d 100644
  
  class TestAuxFallbackReplanThreadsTtl:
 diff --git a/tests/agent/test_prompt_caching.py b/tests/agent/test_prompt_caching.py
-index f4179ac5..c8def531 100644
+index f4179ac5be..c8def531b0 100644
 --- a/tests/agent/test_prompt_caching.py
 +++ b/tests/agent/test_prompt_caching.py
 @@ -16,6 +16,7 @@ from agent.prompt_caching import (

@@ -1,8 +1,8 @@
 diff --git a/agent/auxiliary_client.py b/agent/auxiliary_client.py
-index 7404bccb..654a8d7e 100644
+index ac2566dea2..3ec3f2807f 100644
 --- a/agent/auxiliary_client.py
 +++ b/agent/auxiliary_client.py
-@@ -1798,10 +1798,10 @@ class _AnthropicCompletionsAdapter:
+@@ -1793,10 +1793,10 @@ class _AnthropicCompletionsAdapter:
          if hasattr(response, "usage") and response.usage:
              prompt_tokens = getattr(response.usage, "input_tokens", 0) or 0
              completion_tokens = getattr(response.usage, "output_tokens", 0) or 0
@@ -19,7 +19,7 @@ index 7404bccb..654a8d7e 100644
              index=0,
 diff --git a/tests/agent/test_anthropic_auxiliary_usage.py b/tests/agent/test_anthropic_auxiliary_usage.py
 new file mode 100644
-index 00000000..3246ce6d
+index 0000000000..3246ce6db2
 --- /dev/null
 +++ b/tests/agent/test_anthropic_auxiliary_usage.py
 @@ -0,0 +1,38 @@
