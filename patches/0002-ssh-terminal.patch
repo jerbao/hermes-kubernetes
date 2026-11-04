@@ -1,6 +1,6 @@
 diff --git a/tests/tools/test_ssh_command_batches.py b/tests/tools/test_ssh_command_batches.py
 new file mode 100644
-index 00000000..a1e89119
+index 0000000000..a1e89119b4
 --- /dev/null
 +++ b/tests/tools/test_ssh_command_batches.py
 @@ -0,0 +1,57 @@
@@ -63,7 +63,7 @@ index 00000000..a1e89119
 +    assert retained.read_bytes() == b'keep'
 diff --git a/tests/tools/test_ssh_incremental_sync.py b/tests/tools/test_ssh_incremental_sync.py
 new file mode 100644
-index 00000000..3aee078a
+index 0000000000..3aee078a62
 --- /dev/null
 +++ b/tests/tools/test_ssh_incremental_sync.py
 @@ -0,0 +1,201 @@
@@ -270,7 +270,7 @@ index 00000000..3aee078a
 +    assert names == {"skills/tool/scripts/new.py", "cache/web/.git/page"}
 diff --git a/tests/tools/test_ssh_profile_sync.py b/tests/tools/test_ssh_profile_sync.py
 new file mode 100644
-index 00000000..c7034ba4
+index 0000000000..c7034ba411
 --- /dev/null
 +++ b/tests/tools/test_ssh_profile_sync.py
 @@ -0,0 +1,90 @@
@@ -366,7 +366,7 @@ index 00000000..c7034ba4
 +    assert (root / 'skills/owned/SKILL.md').read_text() == 'returned-root'
 diff --git a/tests/tools/test_ssh_return_scope.py b/tests/tools/test_ssh_return_scope.py
 new file mode 100644
-index 00000000..a4b7c779
+index 0000000000..a4b7c779a9
 --- /dev/null
 +++ b/tests/tools/test_ssh_return_scope.py
 @@ -0,0 +1,162 @@
@@ -533,7 +533,7 @@ index 00000000..a4b7c779
 +    assert (home / "skills/directory/private.txt").read_text() == "external fixture must not be copied"
 +    assert (remote / "skills/directory").is_symlink()
 diff --git a/tools/environments/file_sync.py b/tools/environments/file_sync.py
-index e3b0774e..ec56367e 100644
+index e3b0774e53..ec56367e3d 100644
 --- a/tools/environments/file_sync.py
 +++ b/tools/environments/file_sync.py
 @@ -22,7 +22,7 @@ try:
@@ -798,7 +798,7 @@ index e3b0774e..ec56367e 100644
              # A misbehaving sandbox could produce an arbitrarily large tar.
              try:
 diff --git a/tools/environments/ssh.py b/tools/environments/ssh.py
-index ce9ee757..f94a0079 100644
+index ce9ee7579a..f94a007938 100644
 --- a/tools/environments/ssh.py
 +++ b/tools/environments/ssh.py
 @@ -2,6 +2,7 @@

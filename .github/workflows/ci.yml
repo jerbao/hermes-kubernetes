@@ -20,7 +20,7 @@ jobs:
           python-version: '3.14'
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '26'
       - run: python -m hermes_kubernetes.source.desktop --install --test
   project:
     runs-on: ubuntu-latest

@@ -1,15 +1,24 @@
 diff --git a/hermes_state_messages.py b/hermes_state_messages.py
-index 19908aed..e5fb921b 100644
+index ef725c17ac..eb9e308012 100644
 --- a/hermes_state_messages.py
 +++ b/hermes_state_messages.py
-@@ -1132,9 +1132,19 @@ class SessionMessagesMixin:
-         raw keystrokes, and the turn must not append a second row for the same input."""
+@@ -1050,13 +1050,24 @@ class SessionMessagesMixin(SessionDetachedResultsMixin, SessionTodoResultMixin):
          if not session_id or isinstance(row_id, bool) or not isinstance(row_id, int) or row_id <= 0:
              return 0
+         if display_metadata is None:
+-            return self._write_rowcount(
++            updated = self._write_rowcount(
+                 "UPDATE messages SET content = ? WHERE id = ? AND session_id = ? AND role = 'user' AND active = 1",
+                 (self._encode_content(content), row_id, session_id))
 -        return self._write_rowcount(
-+        updated = self._write_rowcount(
-             "UPDATE messages SET content = ? WHERE id = ? AND session_id = ? AND role = 'user' AND active = 1",
-             (self._encode_content(content), row_id, session_id))
+-            "UPDATE messages SET content = ?, api_content = NULL, display_metadata = ? "
+-            "WHERE id = ? AND session_id = ? AND role = 'user' AND active = 1",
+-            (self._encode_content(content), self._encode_display_metadata(display_metadata), row_id, session_id))
++        else:
++            updated = self._write_rowcount(
++                "UPDATE messages SET content = ?, api_content = NULL, display_metadata = ? "
++                "WHERE id = ? AND session_id = ? AND role = 'user' AND active = 1",
++                (self._encode_content(content), self._encode_display_metadata(display_metadata), row_id, session_id))
 +        if updated:
 +            # The content rewrite fires messages_display_identity_update, which clears display_identity
 +            # and display_order for this row (and its identity peers). Nothing else reassigns them before
@@ -23,18 +32,18 @@ index 19908aed..e5fb921b 100644
  
      def deactivate_message(self, session_id: str, row_id: int) -> int:
          """Deactivate ONE known row (id-addressed, idempotent; returns the affected row count). Used by
-@@ -1356,7 +1366,7 @@ class SessionMessagesMixin:
+@@ -1334,7 +1345,7 @@ class SessionMessagesMixin(SessionDetachedResultsMixin, SessionTodoResultMixin):
                 JOIN messages AS chosen ON chosen.id = (
                     SELECT candidate.id FROM messages AS candidate
                     WHERE candidate.session_id = ?
 -                     AND candidate.display_order = page.display_order
 +                     AND candidate.display_order IS page.display_order
-                      AND (candidate.active = 1 OR candidate.compacted = 1){DISPLAY_VISIBLE_SQL}
+                      AND (candidate.active = 1 OR candidate.compacted = 1){DISPLAY_VISIBLE_SQL}{not_a_later_tool_copy_sql("candidate")}
                     ORDER BY candidate.active DESC, candidate.id DESC LIMIT 1
                 )
 diff --git a/tests/hermes_state/test_display_order_after_user_content_rewrite.py b/tests/hermes_state/test_display_order_after_user_content_rewrite.py
 new file mode 100644
-index 00000000..f4df57ad
+index 0000000000..f4df57ad35
 --- /dev/null
 +++ b/tests/hermes_state/test_display_order_after_user_content_rewrite.py
 @@ -0,0 +1,123 @@

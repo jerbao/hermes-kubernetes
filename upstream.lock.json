@@ -1,24 +1,24 @@
 {
   "schema": 1,
   "repository": "https://github.com/NousResearch/hermes-agent",
-  "revision": "bf0203a794a07aac3ff764972ab9087baa4e4f4e",
+  "revision": "f0d94882e89ab8d4098b5bb2f166adfb9ee0a0ab",
   "release": {
-    "tag": "v0.22.5",
-    "commit": "bf0203a794a07aac3ff764972ab9087baa4e4f4e",
-    "id": 421389285,
-    "published_at": "2026-10-23T05:28:45Z",
-    "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.5"
+    "tag": "v0.22.6",
+    "commit": "f0d94882e89ab8d4098b5bb2f166adfb9ee0a0ab",
+    "id": 431662574,
+    "published_at": "2026-11-02T17:18:36Z",
+    "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.6"
   },
   "patches": [
     {
       "path": "patches/0001-runtime-almalinux.patch",
-      "sha256": "cf92584db47c0ce538fc02f0af49ba2c9d907ba4bca413160c6858f34fc308ae",
+      "sha256": "94f8765eaa01ba70d000cfa67623fad1b8b0c936f1fcab7fef013362999ba575",
       "description": "AlmaLinux x86-64-v2 image and runtime dependencies",
       "native_tests": []
     },
     {
       "path": "patches/0002-ssh-terminal.patch",
-      "sha256": "7e1fd7ea1c5009d2b508156fe0f81b678d4a3e1fa5fbeda305c4b48207bbe23d",
+      "sha256": "6076a66d01d175f77b3443a467873d4a960d1008ddeb688a7417122593d8cdda",
       "description": "SSH transport, file synchronization and profile isolation",
       "native_tests": [
         "tests/tools/test_ssh_command_batches.py",
@@ -34,7 +34,7 @@
     },
     {
       "path": "patches/0003-anthropic-usage.patch",
-      "sha256": "067cd61f3d1b32e172958a6387caff3ab0c039045bda30c33d7e30fe7e6ba7e6",
+      "sha256": "8dc2aa2203dcbb38fecee9cdc83fd354437d5685f56c5199acd542b11058c70f",
       "description": "Native Anthropic token and cache accounting in the auxiliary adapter",
       "native_tests": [
         "tests/agent/test_anthropic_auxiliary_usage.py",
@@ -44,7 +44,7 @@
     },
     {
       "path": "patches/0004-mcp-stdio-executor.patch",
-      "sha256": "79ff721b973b1d94d665ee1e907bea459bd6869fb563685f2f70d55d09de6290",
+      "sha256": "6bf16cf82843a2703f631c2d283c3b29c84642b6609d6e435323c86c4f4434b1",
       "description": "External stdio executor and MCP catalog transport in the interface API",
       "native_tests": [
         "tests/tools/test_mcp_stdio_executor.py",
@@ -53,13 +53,13 @@
     },
     {
       "path": "patches/0005-managed-skills.patch",
-      "sha256": "1092909c5ef6f9bbb1ded21d743a6abaaf6e3195151885cea04498b0ddfabd46",
+      "sha256": "94f8c0f6ea2e91c70809f4b796f848b78440a9095e62f2312dd330d104397774",
       "description": "Official skills adapted to the separate runtime and self-management bridge",
       "native_tests": []
     },
     {
       "path": "patches/0006-proxy-subscription-usage.patch",
-      "sha256": "ce440634abecc529329c610215f9950c4e3f9f795044c29201090464ac392347",
+      "sha256": "5d66362fe33803914dbfb33551cadff76fd8b4aa8948a28ee1d52f5785e20046",
       "description": "Read-only subscription telemetry for custom proxy providers",
       "native_tests": [
         "tests/hermes_cli/test_proxy_subscription_usage.py"
@@ -67,13 +67,13 @@
     },
     {
       "path": "patches/0007-desktop-quota-windows.patch",
-      "sha256": "0400f96add9815ca0f1a225ee6e0d3a182cc8304fe3123f392b42e7ec1cd04fa",
+      "sha256": "bd9d673c784f2322c6436b997bbe8aa0e5da2c897b1a34366d9109ebae9818ab",
       "description": "Show every reported subscription window in the Desktop account tooltip",
       "native_tests": []
     },
     {
       "path": "patches/0008-quota-refresh-and-route-reconciliation.patch",
-      "sha256": "ca978dfa0a2743b4ae9137f8dd378bd164157ec673069b0196f33b0f5e624054",
+      "sha256": "05322c8ba1509110ac3f090de46127ed9f9e979218998f6872f82d3629e0b32d",
       "description": "Refresh subscription usage independently and reconcile stale provider/model pairs by unique catalog ownership",
       "native_tests": [
         "tests/hermes_cli/test_proxy_subscription_usage.py",
@@ -82,77 +82,77 @@
     },
     {
       "path": "patches/0009-session-control-read-rpc.patch",
+      "sha256": "430852fa5cdba17446d864e74cc71b9f2b90e5f5b98919d0f955414f04badff3",
       "description": "Keep session-control snapshots responsive under SessionDB writer contention",
       "native_tests": [
         "tests/tui_gateway/test_session_control.py",
         "tests/hermes_cli/test_loops.py"
-      ],
-      "sha256": "fc502f413916f49227d31449a1b9647ce3e00dde3d225ee06c2573622f6f61d0"
+      ]
     },
     {
       "path": "patches/0010-desktop-session-control-reconnect.patch",
+      "sha256": "f117dd53a8594bd2ff658cfbfb3c1089bf940a2acd56f0f79a48bc908cd24f2f",
       "description": "Refresh active session controls after gateway reconnects",
-      "native_tests": [],
-      "sha256": "a65ac2ec3b70633df4cd1badc0e3b8952fd7070ab7a3d90725bc4a3ab83227f4"
+      "native_tests": []
     },
     {
       "path": "patches/0011-approval-rpc-cold-agent.patch",
+      "sha256": "dee4d7a883f32df4672b763cd078d25bfd0b5f2cc5bb30fc8dcff3cb3dd808d6",
       "description": "Keep approval controls responsive during cold or failed agent initialization",
       "native_tests": [
         "tests/tui_gateway/test_approval_cold_agent.py",
         "tests/tui_gateway/test_protocol.py"
-      ],
-      "sha256": "0efe48d7b7a77bb6f704c844bed2af27f4f5b77a9782968d774c3369516543a0"
+      ]
     },
     {
       "path": "patches/0012-db-lock-and-inline-rpc-timing.patch",
+      "sha256": "d12c2656c6d63c314b8381ecf3b4f8d5085458a269cab8eded734446c0a9d8d5",
       "description": "Log slow SessionDB writer-lock waits/holds and slow inline RPCs on the socket reader",
       "native_tests": [
         "tests/hermes_state/test_lock_timing.py",
         "tests/tui_gateway/test_inline_rpc_timing.py",
         "tests/tui_gateway/test_session_control.py"
-      ],
-      "sha256": "7c3f9d22181fa5b6531c96b6536c9605128350b67cbb3ec13f2ab7bcbad5c01f"
+      ]
     },
     {
       "path": "patches/0013-slow-ui-poll-dispatch.patch",
+      "sha256": "ef2f70882887a998156bff5fa593c061f3fb2a5ccb5762b67785b5a5b9f86094",
       "description": "Keep expensive UI polls off the serial WebSocket dispatcher",
       "native_tests": [
         "tests/tui_gateway/test_slow_poll_dispatch.py"
-      ],
-      "sha256": "814b83bb3b48450c5456e7a0b0e136980ef0ab422f587caa94657b4975bd2c64"
+      ]
     },
     {
       "path": "patches/0014-read-lock-diagnostics.patch",
+      "sha256": "7d2a7c0578c343a6dab5d53a17b89434871812fa97b06f88abf4fe924a7f7dda",
       "description": "Distinguish read-only handles and report writable read-pool fallback causes",
       "native_tests": [
         "tests/hermes_state/test_read_path_diagnostics.py",
         "tests/hermes_state/test_lock_timing.py",
         "tests/hermes_state/test_session_db_read_conn_pool.py"
-      ],
-      "sha256": "43a88bbdee49d1db97df2fa643446f43257788a693892a138a6d5a0d1d35782f"
+      ]
     },
     {
       "path": "patches/0015-command-catalog-dispatch.patch",
+      "sha256": "ccb32715a426dbec05893fa882229c4e4cb61d2e864d51237c1c0ff091176e9d",
       "description": "Keep command catalog discovery off the WebSocket dispatcher and time its stages",
       "native_tests": [
         "tests/tui_gateway/test_slow_poll_dispatch.py",
         "tests/tui_gateway/test_command_description_fidelity.py"
-      ],
-      "sha256": "81d69ad438f65f41fcc8fd14755a17b2f270890136bfca845599af72d0cef5a8"
+      ]
     },
     {
       "path": "patches/0016-skill-catalog-cache-scopes.patch",
+      "sha256": "46e00b8f7642390594e6f7a89400e3c8d06e6e6d9e80efa3ab31b27a5742bc28",
       "description": "Reuse separate skill catalogs across profile switches and start TTL after discovery",
       "native_tests": [
         "tests/tools/test_skill_catalog_cache_scopes.py",
         "tests/tools/test_skills_tool.py"
-      ],
-      "sha256": "55be7a7433956d2c0cae48aa28243b9f5a0a8a1932c01f64c00b956897898307"
+      ]
     },
     {
       "path": "patches/0017-display-order-after-prompt-rewrite.patch",
-      "sha256": "daf054fcdeea024fe4efad55d8e9da904ce97469c6985f553d1c8e3d447000c5",
+      "sha256": "e8812c55dd760c6fb824cb01f42b60c5d106098787ae61a0dcdff53335f57834",
       "description": "Restore the display sort key after a prompt rewrite and keep NULL groups in display pages",
       "native_tests": [
         "tests/hermes_state/test_display_order_after_user_content_rewrite.py",
@@ -165,7 +165,7 @@
     },
     {
       "path": "patches/0018-skill-frontmatter-cache.patch",
-      "sha256": "1056e53c7180b61b64e2b410cf25e6da77fe85fef95b808556ec1a7c66443eac",
+      "sha256": "1fa2e7e878dce9260c6646f35c5332cf8bcdc843dd3d5b4116123206dff52e3a",
       "description": "Parse each distinct skill frontmatter once per process",
       "native_tests": [
         "tests/agent/test_skill_frontmatter_cache.py",
@@ -177,7 +177,7 @@
     },
     {
       "path": "patches/0019-cwd-marker-xtrace.patch",
-      "sha256": "889eefa526a63f302dbbe8454c05059a8df281d7be0b1364b8f16d6ca5ff3151",
+      "sha256": "2cce0e0dbb98c1e8a3fb07306900cb6a93aeb03d6cb97216ca11a1add7bf2d4a",
       "description": "Keep shell xtrace out of internal CWD markers",
       "native_tests": [
         "tests/tools/test_base_environment.py"
@@ -185,7 +185,7 @@
     },
     {
       "path": "patches/0020-minimax-m31-flash.patch",
-      "sha256": "4fbdf3dd4d3bbe262d9cfcc20613f43a57d56b692149e952b3075a1cc45f2ca1",
+      "sha256": "cdadf937982ff3dde2febc3d3333f7cfbae8a05a718f045bf708abc567232dc6",
       "description": "Backport MiniMax-M3.1-Flash catalog and reasoning support from upstream PR #141412",
       "native_tests": [
         "tests/plugins/model_providers/test_minimax_m31_flash.py",
@@ -197,7 +197,7 @@
     },
     {
       "path": "patches/0021-anthropic-explicit-5m-cache-ttl.patch",
-      "sha256": "a25c95f175a48b4bb002f79988dfa56791617fe0fbce9cbba886bdb4b0f4cfc8",
+      "sha256": "2540ebe6198f0ca72a0f8edae43a5f169b411e3435cfe674fc9656b04e993ce8",
       "description": "Write ttl 5m explicitly on native Anthropic cache markers so CLIProxyAPI does not promote subagent caches to 1h",
       "native_tests": [
         "tests/agent/test_prompt_caching.py",
@@ -209,7 +209,7 @@
     },
     {
       "path": "patches/0022-read-file-truncated-continue-hint.patch",
-      "sha256": "ea4fd55ed875c9693d2cf240253e7a4a77d0b01ec17b95f892cce373460cbc4e",
+      "sha256": "b4c019e4c00e7e38bd1c6f871613c3a0d776c47754406d5af3f388f65b1e56cd",
       "description": "Name the continuation offset when a refused read_file re-read follows a truncated read",
       "native_tests": [
         "tests/tools/test_file_read_continue_hint.py",

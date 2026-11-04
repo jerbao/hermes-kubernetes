@@ -1,6 +1,6 @@
 diff --git a/tests/tools/test_skill_catalog_cache_scopes.py b/tests/tools/test_skill_catalog_cache_scopes.py
 new file mode 100644
-index 00000000..20848f01
+index 0000000000..20848f01ea
 --- /dev/null
 +++ b/tests/tools/test_skill_catalog_cache_scopes.py
 @@ -0,0 +1,58 @@
@@ -63,7 +63,7 @@ index 00000000..20848f01
 +    assert skills._skill_catalog()[0]["name"] == "one"
 +    assert len(reads) == 1
 diff --git a/tools/skills_tool.py b/tools/skills_tool.py
-index a6f8d186..d3b47c42 100644
+index 152c17410e..9d395b6af4 100644
 --- a/tools/skills_tool.py
 +++ b/tools/skills_tool.py
 @@ -237,6 +237,9 @@ def _skill_catalog(*, skip_disabled: bool = False, include_hidden: bool = False)

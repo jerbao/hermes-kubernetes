@@ -1,8 +1,8 @@
 diff --git a/hermes_cli/models_catalog_static.py b/hermes_cli/models_catalog_static.py
-index 821e04ce84a29..2cf64ce96dab1 100644
+index f248e4f003..97db55448f 100644
 --- a/hermes_cli/models_catalog_static.py
 +++ b/hermes_cli/models_catalog_static.py
-@@ -149,7 +149,7 @@ def _xai_curated_models() -> list[str]:
+@@ -200,7 +200,7 @@ class _CuratedCatalog(dict):
  _OPENAI_CHAT_MODELS = [
      "gpt-5.4", "gpt-5.4-mini", "gpt-5-mini", "gpt-5.3-codex", "gpt-5.2-codex", "gpt-4.1", "gpt-4o", "gpt-4o-mini",
  ]
@@ -11,7 +11,7 @@ index 821e04ce84a29..2cf64ce96dab1 100644
  _TENCENT_MODELS = ["hy4-preview", "hy3", "hy3-preview"]
  # Alibaba DashScope Coding platform (coding-intl): Qwen + third-party (GLM, Kimi, MiniMax, DeepSeek).
  # Classic DashScope keys should override DASHSCOPE_BASE_URL to
-@@ -218,7 +218,7 @@ def _xai_curated_models() -> list[str]:
+@@ -262,7 +262,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = _CuratedCatalog({
          "kimi-k3", "kimi-k2.6", "kimi-k2.5", "kimi-k2-thinking", "kimi-k2-turbo-preview", "kimi-k2-0905-preview",
      ],
      "minimax": list(_MINIMAX_MODELS),
@@ -21,7 +21,7 @@ index 821e04ce84a29..2cf64ce96dab1 100644
      "anthropic": [
          "claude-fable-5.1", "claude-fable-5", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5",
 diff --git a/plugins/model-providers/custom/__init__.py b/plugins/model-providers/custom/__init__.py
-index 2858553dc8c7d..19d27642a6538 100644
+index 2858553dc8..19d27642a6 100644
 --- a/plugins/model-providers/custom/__init__.py
 +++ b/plugins/model-providers/custom/__init__.py
 @@ -27,6 +27,11 @@ def _looks_like_ollama_endpoint(base_url: str | None) -> bool:
@@ -36,7 +36,7 @@ index 2858553dc8c7d..19d27642a6538 100644
  class CustomProfile(ProviderProfile):
      """Custom/Ollama local provider — think=false and num_ctx support."""
  
-@@ -71,8 +76,8 @@ def build_api_kwargs_extras(
+@@ -71,8 +76,8 @@ class CustomProfile(ProviderProfile):
          if reasoning_config and isinstance(reasoning_config, dict):
              effort = (reasoning_config.get("effort") or "").strip().lower()
              if effort == "none" or reasoning_config.get("enabled", True) is False:
@@ -48,7 +48,7 @@ index 2858553dc8c7d..19d27642a6538 100644
                      extra_body["think"] = False
              elif effort and base_url_host_matches(str(ctx.get("base_url") or ""), "api.groq.com"):
 diff --git a/plugins/model-providers/minimax/__init__.py b/plugins/model-providers/minimax/__init__.py
-index 27e1dd12dae7e..fc7d42c699d76 100644
+index 27e1dd12da..fc7d42c699 100644
 --- a/plugins/model-providers/minimax/__init__.py
 +++ b/plugins/model-providers/minimax/__init__.py
 @@ -1,7 +1,7 @@
@@ -60,7 +60,7 @@ index 27e1dd12dae7e..fc7d42c699d76 100644
  which needs MiniMax-specific reasoning controls in extra_body.
  """
  
-@@ -26,11 +26,14 @@ def build_api_kwargs_extras(
+@@ -26,11 +26,14 @@ class MiniMaxProfile(ProviderProfile):
      ) -> tuple[dict[str, Any], dict[str, Any]]:
          """M3 on api.minimax.io/v1 keeps thinking inline unless ``reasoning_split``
          is sent; effort levels only select adaptive vs disabled ``thinking``."""
@@ -80,6 +80,7 @@ index 27e1dd12dae7e..fc7d42c699d76 100644
              extra_body["thinking"] = {"type": "adaptive"}
 diff --git a/tests/plugins/model_providers/test_minimax_m31_flash.py b/tests/plugins/model_providers/test_minimax_m31_flash.py
 new file mode 100644
+index 0000000000..d16cc17cd3
 --- /dev/null
 +++ b/tests/plugins/model_providers/test_minimax_m31_flash.py
 @@ -0,0 +1,107 @@

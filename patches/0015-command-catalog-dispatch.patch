@@ -1,5 +1,5 @@
 diff --git a/tests/tui_gateway/test_slow_poll_dispatch.py b/tests/tui_gateway/test_slow_poll_dispatch.py
-index a670d9c2..018ad2a4 100644
+index a670d9c243..018ad2a443 100644
 --- a/tests/tui_gateway/test_slow_poll_dispatch.py
 +++ b/tests/tui_gateway/test_slow_poll_dispatch.py
 @@ -12,6 +12,7 @@ from tui_gateway.transport import current_transport
@@ -11,7 +11,7 @@ index a670d9c2..018ad2a4 100644
  def test_slow_poll_leaves_dispatcher_available(monkeypatch, method, params):
      entered, release, written = threading.Event(), threading.Event(), threading.Event()
 diff --git a/tui_gateway/command_discovery.py b/tui_gateway/command_discovery.py
-index 03322618..d390244d 100644
+index 033226188b..d390244d08 100644
 --- a/tui_gateway/command_discovery.py
 +++ b/tui_gateway/command_discovery.py
 @@ -6,6 +6,7 @@ builders. Keep the legacy catalog and completion semantics identical here.
@@ -92,13 +92,13 @@ index 03322618..d390244d 100644
          except Exception as e:
              logger.debug("skill discovery failed", exc_info=True)
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
-index 34817349..a23fbe23 100644
+index af2629525c..4d9b14f933 100644
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
-@@ -193,7 +193,7 @@ _LONG_HANDLERS = frozenset({
+@@ -199,7 +199,7 @@ _LONG_HANDLERS = frozenset({
      "wake.status", "session.active_list", "session.branch", "session.compress", "session.list",
      "session.resume", "session.save", "session.workspace.move", "shell.exec", "skills.manage", "slash.exec",
-     "onboarding.start", "onboarding.state",
+     "onboarding.start", "onboarding.state", "subagent.roster",
 -    "session.context_breakdown", "subagent.list", "pet.info.meta",
 +    "session.context_breakdown", "subagent.list", "pet.info.meta", "commands.catalog",
      "session.control.read",  # WAL snapshot read; keep shared-DB contention off the WS dispatcher

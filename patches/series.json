@@ -5,8 +5,7 @@
       "path": "patches/0001-runtime-almalinux.patch",
       "description": "AlmaLinux x86-64-v2 image and runtime dependencies",
       "files": [
-        "Dockerfile",
-        "pm/lock.json"
+        "Dockerfile"
       ],
       "native_tests": []
     },
@@ -68,7 +67,7 @@
       "description": "Official skills adapted to the separate runtime and self-management bridge",
       "files": [
         "skills/autonomous-ai-agents/hermes-agent/SKILL.md",
-        "skills/software-development/hermes-agent-skill-authoring/SKILL.md",
+        "optional-skills/software-development/hermes-agent-skill-authoring/SKILL.md",
         "skills/autonomous-ai-agents/hermes-agent/references/cli-reference.md",
         "skills/autonomous-ai-agents/hermes-agent/references/configuration.md",
         "skills/autonomous-ai-agents/hermes-agent/references/native-mcp.md",

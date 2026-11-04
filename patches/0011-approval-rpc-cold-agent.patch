@@ -1,6 +1,6 @@
 diff --git a/tests/tui_gateway/test_approval_cold_agent.py b/tests/tui_gateway/test_approval_cold_agent.py
 new file mode 100644
-index 00000000..9139d68c
+index 0000000000..9139d68c92
 --- /dev/null
 +++ b/tests/tui_gateway/test_approval_cold_agent.py
 @@ -0,0 +1,54 @@
@@ -59,10 +59,10 @@ index 00000000..9139d68c
 +                                      "params": {"session_id": "unknown-cold-session"}})
 +    assert response["error"]["code"] == 4001
 diff --git a/tui_gateway/methods_prompt.py b/tui_gateway/methods_prompt.py
-index f4b0b80c..fab91f94 100644
+index c7e939d3ab..4875592a0c 100644
 --- a/tui_gateway/methods_prompt.py
 +++ b/tui_gateway/methods_prompt.py
-@@ -1235,9 +1235,11 @@ def _(rid, params: dict) -> dict:
+@@ -1309,9 +1309,11 @@ def _(rid, params: dict) -> dict:
      return _ok(rid, {"status": "expired"})
  
  
@@ -75,7 +75,7 @@ index f4b0b80c..fab91f94 100644
      if err:
          return err
      return _approval_reply(
-@@ -1246,7 +1248,7 @@ def _(rid, params: dict) -> dict:
+@@ -1320,7 +1322,7 @@ def _(rid, params: dict) -> dict:
  
  @method("approval.received")
  def _(rid, params: dict) -> dict:
@@ -84,7 +84,7 @@ index f4b0b80c..fab91f94 100644
      if err:
          return err
      if not isinstance(request_id := params.get("request_id"), str) or not request_id:
-@@ -1257,7 +1259,7 @@ def _(rid, params: dict) -> dict:
+@@ -1331,7 +1333,7 @@ def _(rid, params: dict) -> dict:
  
  @method("approval.respond")
  def _(rid, params: dict) -> dict:
