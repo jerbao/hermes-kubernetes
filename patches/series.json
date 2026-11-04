@@ -5,8 +5,7 @@
       "path": "patches/0001-runtime-almalinux.patch",
       "description": "AlmaLinux x86-64-v2 image and runtime dependencies",
       "files": [
-        "Dockerfile",
-        "pm/lock.json"
+        "Dockerfile"
       ],
       "native_tests": []
     },

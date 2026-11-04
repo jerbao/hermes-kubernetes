@@ -12,7 +12,7 @@
   "patches": [
     {
       "path": "patches/0001-runtime-almalinux.patch",
-      "sha256": "0aa20b74449cb6226204d64feff49beec4b256deff336cbdc959ef8b0b901380",
+      "sha256": "94f8765eaa01ba70d000cfa67623fad1b8b0c936f1fcab7fef013362999ba575",
       "description": "AlmaLinux x86-64-v2 image and runtime dependencies",
       "native_tests": []
     },
