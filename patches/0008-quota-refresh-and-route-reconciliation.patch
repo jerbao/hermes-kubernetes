@@ -1,5 +1,5 @@
 diff --git a/apps/desktop/src/app/shell/model-catalog-menu.tsx b/apps/desktop/src/app/shell/model-catalog-menu.tsx
-index 048db76b71..28e6b2c5f8 100644
+index 61fb7c4e..deb190f5 100644
 --- a/apps/desktop/src/app/shell/model-catalog-menu.tsx
 +++ b/apps/desktop/src/app/shell/model-catalog-menu.tsx
 @@ -44,7 +44,13 @@ import type { HermesGateway } from '@/hermes'
@@ -17,7 +17,7 @@ index 048db76b71..28e6b2c5f8 100644
  import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
  import { accountResetMs, formatReset, modelResetMs } from '@/lib/provider-limit'
  import { reasoningEffortLabel } from '@/lib/reasoning-effort'
-@@ -285,6 +291,17 @@ export function ModelCatalogMenu({
+@@ -288,6 +294,17 @@ export function ModelCatalogMenu({
      refetchInterval: query => nousPricingPoll(query.state.data, query.state.dataUpdateCount)
    })
  
@@ -35,7 +35,7 @@ index 048db76b71..28e6b2c5f8 100644
    const loading = modelOptions.isPending && !modelOptions.data
  
    // Every local-models read in this menu sits behind the --local launch
-@@ -314,7 +331,15 @@ export function ModelCatalogMenu({
+@@ -317,7 +334,15 @@ export function ModelCatalogMenu({
  
    const error = queryErrorMessage(modelOptions.error)
  
@@ -53,7 +53,7 @@ index 048db76b71..28e6b2c5f8 100644
    // The catalog carries MoA presets as a virtual `moa` provider row. Keep it
    // out of the main groups so presets never show up twice.
 diff --git a/apps/desktop/src/app/shell/model-menu-panel.test.tsx b/apps/desktop/src/app/shell/model-menu-panel.test.tsx
-index e250554011..c31d3d5bde 100644
+index e2505540..c31d3d5b 100644
 --- a/apps/desktop/src/app/shell/model-menu-panel.test.tsx
 +++ b/apps/desktop/src/app/shell/model-menu-panel.test.tsx
 @@ -1,5 +1,5 @@
@@ -134,25 +134,19 @@ index e250554011..c31d3d5bde 100644
    const reset = new Date(Date.now() + 5 * 3600_000).toISOString()
    getGlobalModelOptions.mockResolvedValue({
 diff --git a/apps/desktop/src/app/shell/use-model-menu-controller.ts b/apps/desktop/src/app/shell/use-model-menu-controller.ts
-index 371802fec0..c50a8edcec 100644
+index 4dcb2416..38bbf737 100644
 --- a/apps/desktop/src/app/shell/use-model-menu-controller.ts
 +++ b/apps/desktop/src/app/shell/use-model-menu-controller.ts
-@@ -2,12 +2,12 @@ import { DEFAULT_REASONING_EFFORT, type ModelOptionsResult } from '@hermes/share
- import { useStore } from '@nanostores/react'
- import { useQuery } from '@tanstack/react-query'
- import { atom } from 'nanostores'
--import { useRef } from 'react'
-+import { useEffect, useRef } from 'react'
- 
+@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef } from 'react'
  import { useSessionView } from '@/app/chat/session-view'
  import type { HermesGateway } from '@/hermes'
  import { useI18n } from '@/i18n'
 -import { modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
 +import { modelOptionsQueryKey, requestModelOptions, uniqueConfiguredModelProvider } from '@/lib/model-options'
  import { currentPickerSelection } from '@/lib/model-status-label'
+ import { $daybreakByProfile, daybreakKey, setDaybreak, syncDaybreak } from '@/store/daybreak'
  import {
-   $modelPresets,
-@@ -96,6 +96,24 @@ export function useModelMenuController({
+@@ -97,6 +97,24 @@ export function useModelMenuController({
      modelOptions.data
    )
  
@@ -177,7 +171,7 @@ index 371802fec0..c50a8edcec 100644
    const hostScope = `${ownerConnectionId ?? ''}::${profile}`
    const latestHostScope = useRef(hostScope)
    latestHostScope.current = hostScope
-@@ -196,7 +214,7 @@ export function useModelMenuController({
+@@ -226,7 +244,7 @@ export function useModelMenuController({
        fast: currentFastMode,
        serviceTier: currentServiceTier,
        model: optionsModel,
@@ -187,7 +181,7 @@ index 371802fec0..c50a8edcec 100644
  
      presetFor: (provider, model) => modelPresets[modelPresetKey(provider, model)] ?? {},
 diff --git a/apps/desktop/src/lib/model-options.test.ts b/apps/desktop/src/lib/model-options.test.ts
-index 4a2d788290..f1f19a97f1 100644
+index 4a2d7882..f1f19a97 100644
 --- a/apps/desktop/src/lib/model-options.test.ts
 +++ b/apps/desktop/src/lib/model-options.test.ts
 @@ -8,7 +8,8 @@ import {
@@ -237,7 +231,7 @@ index 4a2d788290..f1f19a97f1 100644
    it('flags a bare pick the default has migrated to its custom-provider form (#81922)', () => {
      // The wire payload for `nvidia` builds the NATIVE provider and drops the
 diff --git a/apps/desktop/src/lib/model-options.ts b/apps/desktop/src/lib/model-options.ts
-index 97f9e765d5..84afad4e6b 100644
+index 97f9e765..84afad4e 100644
 --- a/apps/desktop/src/lib/model-options.ts
 +++ b/apps/desktop/src/lib/model-options.ts
 @@ -28,6 +28,28 @@ export function findCatalogProvider<T extends CatalogProviderIdentity>(
@@ -312,7 +306,7 @@ index 97f9e765d5..84afad4e6b 100644
    profile: null | string | undefined,
    sessionId?: null | string,
 diff --git a/apps/shared/src/gateway-contract.generated.ts b/apps/shared/src/gateway-contract.generated.ts
-index e54895fa57..26af6e07af 100644
+index 8a84977c..7da8956b 100644
 --- a/apps/shared/src/gateway-contract.generated.ts
 +++ b/apps/shared/src/gateway-contract.generated.ts
 @@ -829,6 +829,7 @@ export interface ModelOptionProvider {
@@ -323,7 +317,7 @@ index e54895fa57..26af6e07af 100644
    total_models?: number | null
    is_current?: boolean | null
    is_user_defined?: boolean | null
-@@ -896,6 +897,13 @@ export interface ProviderUsageAccount {
+@@ -897,6 +898,13 @@ export interface ProviderUsageAccount {
    state: 'ready' | 'limited' | 'unknown' | 'unavailable'
    resets_at?: string | null
  }
@@ -337,7 +331,7 @@ index e54895fa57..26af6e07af 100644
  export interface ImageGenerateParams {
    prompt?: string | null
    aspect_ratio?: string | null
-@@ -6274,6 +6282,8 @@ export interface RpcMethods {
+@@ -6501,6 +6509,8 @@ export interface RpcMethods {
    'model.options': { params: ModelOptionsParams; result: ModelOptionsResult }
    /** Save an API key for a provider and return its refreshed inventory row. */
    'model.save_key': { params: ModelSaveKeyParams; result: ModelSaveKeyResult }
@@ -346,7 +340,7 @@ index e54895fa57..26af6e07af 100644
    /** Write onboarding.run in the root profile's config.yaml; answers the new state. */
    'onboarding.set_run': { params: OnboardingSetRunParams; result: OnboardingRunStateResult }
    /** Skip setup: end the session's onboarding run and close the card that waits. */
-@@ -6681,6 +6691,7 @@ export const RPC_METHODS = [
+@@ -6913,6 +6923,7 @@ export const RPC_METHODS = [
    'model.disconnect',
    'model.options',
    'model.save_key',
@@ -355,10 +349,10 @@ index e54895fa57..26af6e07af 100644
    'onboarding.skip',
    'onboarding.start',
 diff --git a/apps/shared/src/gateway-contract.openrpc.json b/apps/shared/src/gateway-contract.openrpc.json
-index 2b7423bb6b..e849d40c0e 100644
+index fb0d36e1..d12fbfe4 100644
 --- a/apps/shared/src/gateway-contract.openrpc.json
 +++ b/apps/shared/src/gateway-contract.openrpc.json
-@@ -2022,6 +2022,24 @@
+@@ -2076,6 +2076,24 @@
          }
        }
      },
@@ -383,7 +377,7 @@ index 2b7423bb6b..e849d40c0e 100644
      {
        "name": "onboarding.set_run",
        "summary": "Write onboarding.run in the root profile's config.yaml; answers the new state.",
-@@ -24162,6 +24180,18 @@
+@@ -25064,6 +25082,18 @@
              "title": "Models",
              "type": "array"
            },
@@ -402,7 +396,7 @@ index 2b7423bb6b..e849d40c0e 100644
            "total_models": {
              "anyOf": [
                {
-@@ -24639,6 +24669,51 @@
+@@ -25541,6 +25571,51 @@
          "title": "ModelSaveKeyResult",
          "type": "object"
        },
@@ -455,7 +449,7 @@ index 2b7423bb6b..e849d40c0e 100644
          "additionalProperties": false,
          "description": "``tui_gateway/model_switch.py`` capability-refresh notice.",
 diff --git a/hermes_cli/model_switch_providers.py b/hermes_cli/model_switch_providers.py
-index 60d7a5fa90..515c7791c0 100644
+index 60d7a5fa..515c7791 100644
 --- a/hermes_cli/model_switch_providers.py
 +++ b/hermes_cli/model_switch_providers.py
 @@ -1342,6 +1342,11 @@ def _finalize_picker_rows(results: list, user_providers, current_model: str) ->
@@ -471,7 +465,7 @@ index 60d7a5fa90..515c7791c0 100644
              break
  
 diff --git a/tests/hermes_cli/test_user_providers_model_switch.py b/tests/hermes_cli/test_user_providers_model_switch.py
-index 8491752cd0..ad8813436c 100644
+index 8491752c..ad881343 100644
 --- a/tests/hermes_cli/test_user_providers_model_switch.py
 +++ b/tests/hermes_cli/test_user_providers_model_switch.py
 @@ -630,6 +630,7 @@ def test_current_custom_model_is_surfaced_in_builtin_provider_row(monkeypatch):
@@ -483,7 +477,7 @@ index 8491752cd0..ad8813436c 100644
  
  
 diff --git a/tui_gateway/contracts/config_free_tier_control.py b/tui_gateway/contracts/config_free_tier_control.py
-index fde2b86741..5348704c19 100644
+index abce5d69..fe68ee36 100644
 --- a/tui_gateway/contracts/config_free_tier_control.py
 +++ b/tui_gateway/contracts/config_free_tier_control.py
 @@ -455,6 +455,10 @@ class ModelOptionsParams(ProfileParams):
@@ -497,7 +491,7 @@ index fde2b86741..5348704c19 100644
  # TODO(common): ModelPricing / ModelCapabilities / ModelOptionProvider are also the row shape of
  # ``model.save_key``'s ``provider`` — the parent consolidates into contracts/common.py.
  class ModelPricing(Result):
-@@ -542,6 +546,7 @@ class ModelOptionProvider(OpenModel):
+@@ -544,6 +548,7 @@ class ModelOptionProvider(OpenModel):
      slug: str
      name: str
      models: list[str] = Field(default_factory=list)
@@ -505,7 +499,7 @@ index fde2b86741..5348704c19 100644
      total_models: int | None = None
      is_current: bool | None = None
      is_user_defined: bool | None = None
-@@ -573,8 +578,15 @@ class ModelOptionsResult(Result):
+@@ -575,8 +580,15 @@ class ModelOptionsResult(Result):
      provider: str = ""
  
  
@@ -522,7 +516,7 @@ index fde2b86741..5348704c19 100644
  
  # ── image.generate ────────────────────────────────────────────────────────────────────────────
 diff --git a/tui_gateway/methods_complete.py b/tui_gateway/methods_complete.py
-index ea2b069c6e..32a9a401db 100644
+index ea2b069c..32a9a401 100644
 --- a/tui_gateway/methods_complete.py
 +++ b/tui_gateway/methods_complete.py
 @@ -331,6 +331,22 @@ def _(rid, params: dict) -> dict:

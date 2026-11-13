@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "repository": "https://github.com/NousResearch/hermes-agent",
-  "revision": "f0d94882e89ab8d4098b5bb2f166adfb9ee0a0ab",
+  "revision": "3b421578588243f920886e6fe79a6faa87ea026e",
   "release": {
-    "tag": "v0.22.6",
-    "commit": "f0d94882e89ab8d4098b5bb2f166adfb9ee0a0ab",
-    "id": 431662574,
-    "published_at": "2026-11-02T17:18:36Z",
-    "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.6"
+    "tag": "v0.23.1",
+    "commit": "3b421578588243f920886e6fe79a6faa87ea026e",
+    "id": 439803874,
+    "published_at": "2026-11-10T01:42:15Z",
+    "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.1"
   },
   "patches": [
     {
@@ -73,7 +73,7 @@
     },
     {
       "path": "patches/0008-quota-refresh-and-route-reconciliation.patch",
-      "sha256": "05322c8ba1509110ac3f090de46127ed9f9e979218998f6872f82d3629e0b32d",
+      "sha256": "99cb44c08b7dd06930144bfea6b882476bc96fd9a08a29d8d8b910a7f8e8d352",
       "description": "Refresh subscription usage independently and reconcile stale provider/model pairs by unique catalog ownership",
       "native_tests": [
         "tests/hermes_cli/test_proxy_subscription_usage.py",
@@ -91,7 +91,7 @@
     },
     {
       "path": "patches/0010-desktop-session-control-reconnect.patch",
-      "sha256": "f117dd53a8594bd2ff658cfbfb3c1089bf940a2acd56f0f79a48bc908cd24f2f",
+      "sha256": "3c04578a8e0791ab4f7ac7369f9bda60b30cb39003199c47b25a06be3328db91",
       "description": "Refresh active session controls after gateway reconnects",
       "native_tests": []
     },
@@ -152,7 +152,7 @@
     },
     {
       "path": "patches/0017-display-order-after-prompt-rewrite.patch",
-      "sha256": "e8812c55dd760c6fb824cb01f42b60c5d106098787ae61a0dcdff53335f57834",
+      "sha256": "1cd27af7fdb15cfd55523c34b401b5d21ae9abca4c3b0073e345496aab95c504",
       "description": "Restore the display sort key after a prompt rewrite and keep NULL groups in display pages",
       "native_tests": [
         "tests/hermes_state/test_display_order_after_user_content_rewrite.py",
@@ -185,7 +185,7 @@
     },
     {
       "path": "patches/0020-minimax-m31-flash.patch",
-      "sha256": "cdadf937982ff3dde2febc3d3333f7cfbae8a05a718f045bf708abc567232dc6",
+      "sha256": "f04663dea0a4df41c9863bed26c984e2deae329b6fb1ad2f4b0155d768eb5e61",
       "description": "Backport MiniMax-M3.1-Flash catalog and reasoning support from upstream PR #141412",
       "native_tests": [
         "tests/plugins/model_providers/test_minimax_m31_flash.py",

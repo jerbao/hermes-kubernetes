@@ -99,7 +99,7 @@ def main():
     root = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=root / "hermes-agent")
-    parser.add_argument("--install", action="store_true", help="Install locked npm dependencies")
+    parser.add_argument("--install", action="store_true", help="Install locked pnpm dependencies")
     parser.add_argument("--test", action="store_true")
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--pack", action="store_true", help="Create a native unpacked application")
@@ -111,25 +111,26 @@ def main():
     ensure(root, source, allow_local_edits=True)
     app = source / "apps/desktop"
     if args.install:
+        # Hermes >= 0.23.1 installs its workspaces with pnpm only (npm is refused by engines).
         subprocess.run(
             [
-                "npm",
-                "ci",
-                "--workspace",
-                "apps/desktop",
-                "--include-workspace-root",
+                "pnpm",
+                "install",
+                "--frozen-lockfile",
                 "--ignore-scripts",
+                "--filter",
+                "{./apps/desktop}...",
             ],
             cwd=source,
             check=True,
         )
     if args.test:
-        subprocess.run(["npm", "run", "test:ui", "--", *TESTS], cwd=app, check=True)
+        subprocess.run(["pnpm", "run", "test:ui", *TESTS], cwd=app, check=True)
     if args.build or args.pack:
         build(root, source)
     if args.pack:
         subprocess.run(
-            ["npm", "run", "builder", "--", "--dir", "--publish", "never"],
+            ["pnpm", "run", "builder", "--dir", "--publish", "never"],
             cwd=app,
             check=True,
         )
