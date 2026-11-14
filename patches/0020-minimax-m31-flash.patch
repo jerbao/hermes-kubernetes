@@ -1,5 +1,5 @@
 diff --git a/hermes_cli/models_catalog_static.py b/hermes_cli/models_catalog_static.py
-index f248e4f003..97db55448f 100644
+index c7084ee0..6a40e79f 100644
 --- a/hermes_cli/models_catalog_static.py
 +++ b/hermes_cli/models_catalog_static.py
 @@ -200,7 +200,7 @@ class _CuratedCatalog(dict):
@@ -19,9 +19,9 @@ index f248e4f003..97db55448f 100644
 +    "minimax-oauth": ["MiniMax-M3.1-Flash", "MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed"],
      "minimax-cn": list(_MINIMAX_MODELS),
      "anthropic": [
-         "claude-fable-5.1", "claude-fable-5", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5",
+         "claude-fable-5-2", "claude-fable-5.1", "claude-fable-5", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5",
 diff --git a/plugins/model-providers/custom/__init__.py b/plugins/model-providers/custom/__init__.py
-index 2858553dc8..19d27642a6 100644
+index 2858553d..19d27642 100644
 --- a/plugins/model-providers/custom/__init__.py
 +++ b/plugins/model-providers/custom/__init__.py
 @@ -27,6 +27,11 @@ def _looks_like_ollama_endpoint(base_url: str | None) -> bool:
@@ -48,7 +48,7 @@ index 2858553dc8..19d27642a6 100644
                      extra_body["think"] = False
              elif effort and base_url_host_matches(str(ctx.get("base_url") or ""), "api.groq.com"):
 diff --git a/plugins/model-providers/minimax/__init__.py b/plugins/model-providers/minimax/__init__.py
-index 27e1dd12da..fc7d42c699 100644
+index 27e1dd12..fc7d42c6 100644
 --- a/plugins/model-providers/minimax/__init__.py
 +++ b/plugins/model-providers/minimax/__init__.py
 @@ -1,7 +1,7 @@
@@ -80,7 +80,7 @@ index 27e1dd12da..fc7d42c699 100644
              extra_body["thinking"] = {"type": "adaptive"}
 diff --git a/tests/plugins/model_providers/test_minimax_m31_flash.py b/tests/plugins/model_providers/test_minimax_m31_flash.py
 new file mode 100644
-index 0000000000..d16cc17cd3
+index 00000000..d16cc17c
 --- /dev/null
 +++ b/tests/plugins/model_providers/test_minimax_m31_flash.py
 @@ -0,0 +1,107 @@

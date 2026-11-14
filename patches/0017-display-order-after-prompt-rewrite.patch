@@ -1,8 +1,8 @@
 diff --git a/hermes_state_messages.py b/hermes_state_messages.py
-index ef725c17ac..eb9e308012 100644
+index f7ba486e..ca06bc35 100644
 --- a/hermes_state_messages.py
 +++ b/hermes_state_messages.py
-@@ -1050,13 +1050,24 @@ class SessionMessagesMixin(SessionDetachedResultsMixin, SessionTodoResultMixin):
+@@ -1051,13 +1051,24 @@ class SessionMessagesMixin(SessionDetachedResultsMixin, SessionTodoResultMixin,
          if not session_id or isinstance(row_id, bool) or not isinstance(row_id, int) or row_id <= 0:
              return 0
          if display_metadata is None:
@@ -11,12 +11,12 @@ index ef725c17ac..eb9e308012 100644
                  "UPDATE messages SET content = ? WHERE id = ? AND session_id = ? AND role = 'user' AND active = 1",
                  (self._encode_content(content), row_id, session_id))
 -        return self._write_rowcount(
--            "UPDATE messages SET content = ?, api_content = NULL, display_metadata = ? "
+-            f"UPDATE messages SET content = ?, api_content = NULL, display_metadata = {_MERGE_DISPLAY_META} "
 -            "WHERE id = ? AND session_id = ? AND role = 'user' AND active = 1",
 -            (self._encode_content(content), self._encode_display_metadata(display_metadata), row_id, session_id))
 +        else:
 +            updated = self._write_rowcount(
-+                "UPDATE messages SET content = ?, api_content = NULL, display_metadata = ? "
++                f"UPDATE messages SET content = ?, api_content = NULL, display_metadata = {_MERGE_DISPLAY_META} "
 +                "WHERE id = ? AND session_id = ? AND role = 'user' AND active = 1",
 +                (self._encode_content(content), self._encode_display_metadata(display_metadata), row_id, session_id))
 +        if updated:
@@ -32,7 +32,7 @@ index ef725c17ac..eb9e308012 100644
  
      def deactivate_message(self, session_id: str, row_id: int) -> int:
          """Deactivate ONE known row (id-addressed, idempotent; returns the affected row count). Used by
-@@ -1334,7 +1345,7 @@ class SessionMessagesMixin(SessionDetachedResultsMixin, SessionTodoResultMixin):
+@@ -1349,7 +1360,7 @@ class SessionMessagesMixin(SessionDetachedResultsMixin, SessionTodoResultMixin,
                 JOIN messages AS chosen ON chosen.id = (
                     SELECT candidate.id FROM messages AS candidate
                     WHERE candidate.session_id = ?
@@ -43,7 +43,7 @@ index ef725c17ac..eb9e308012 100644
                 )
 diff --git a/tests/hermes_state/test_display_order_after_user_content_rewrite.py b/tests/hermes_state/test_display_order_after_user_content_rewrite.py
 new file mode 100644
-index 0000000000..f4df57ad35
+index 00000000..f4df57ad
 --- /dev/null
 +++ b/tests/hermes_state/test_display_order_after_user_content_rewrite.py
 @@ -0,0 +1,123 @@

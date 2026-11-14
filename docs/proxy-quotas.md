@@ -77,8 +77,8 @@ python -m hermes_kubernetes.source.desktop --install --test --pack
 python -m hermes_kubernetes.source.desktop --install-app /Applications/Hermes.app
 ```
 
-Other platforms can run the native `npm run builder` targets in the prepared
-`hermes-agent/apps/desktop` checkout. Updating Desktop directly from upstream may
+Other platforms can run the native `pnpm run builder` targets in the prepared
+`hermes-agent/apps/desktop` checkout (pnpm at the version `pm/lock.json` pins). Updating Desktop directly from upstream may
 replace distribution UI patches; rebuild the client after adopting changes to
 `patches/0007-desktop-quota-windows.patch`. The distribution CI exercises both the
 account component and the actual model menu; no inference calls are required.
