@@ -45,6 +45,7 @@ PRIVATE = {
     ".cache",
     "logs",
     "cache",
+    "index-cache",
     "sessions",
     "state",
     "data",
