@@ -216,6 +216,14 @@
         "tests/tools/test_file_read_guards.py",
         "tests/tools/test_file_tools.py"
       ]
+    },
+    {
+      "path": "patches/0023-whatsapp-bridge-cluster-bind.patch",
+      "sha256": "1c24370f80669a93a8efa5ea0ba57debd32863cb0772d68c12a5a85f0d8f0dba",
+      "description": "Let the WhatsApp bridge listen beyond loopback and accept named cluster hosts, opt-in by env",
+      "native_tests": [
+        "tests/gateway/test_whatsapp_bridge_host_env.py"
+      ]
     }
   ],
   "native_tests": [
@@ -270,6 +278,7 @@
     "tests/agent/test_prompt_cache_boundary.py",
     "tests/tools/test_file_read_continue_hint.py",
     "tests/tools/test_file_read_guards.py",
-    "tests/tools/test_file_tools.py"
+    "tests/tools/test_file_tools.py",
+    "tests/gateway/test_whatsapp_bridge_host_env.py"
   ]
 }
