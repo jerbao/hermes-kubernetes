@@ -320,6 +320,19 @@
         "tests/tools/test_file_read_guards.py",
         "tests/tools/test_file_tools.py"
       ]
+    },
+    {
+      "path": "patches/0023-whatsapp-bridge-cluster-bind.patch",
+      "description": "Let the WhatsApp bridge listen beyond loopback and accept named cluster hosts, opt-in by env",
+      "files": [
+        "scripts/whatsapp-bridge/bridge.js",
+        "plugins/platforms/whatsapp/adapter.py",
+        "scripts/whatsapp-bridge/bridge.host.test.mjs",
+        "tests/gateway/test_whatsapp_bridge_host_env.py"
+      ],
+      "native_tests": [
+        "tests/gateway/test_whatsapp_bridge_host_env.py"
+      ]
     }
   ]
 }

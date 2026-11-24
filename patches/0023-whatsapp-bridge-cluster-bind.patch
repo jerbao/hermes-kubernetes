@@ -1,0 +1,230 @@
+diff --git a/plugins/platforms/whatsapp/adapter.py b/plugins/platforms/whatsapp/adapter.py
+index 6d305f9..bfea49a 100644
+--- a/plugins/platforms/whatsapp/adapter.py
++++ b/plugins/platforms/whatsapp/adapter.py
+@@ -391,6 +391,7 @@ _BRIDGE_PASSTHROUGH_ENV = (
+     "WHATSAPP_MENTION_PATTERNS", "WHATSAPP_FREE_RESPONSE_CHATS", "WHATSAPP_DEBUG",
+     "WHATSAPP_FORWARD_OWNER_MESSAGES", "WHATSAPP_MAX_MESSAGE_LENGTH",
+     "WHATSAPP_CHUNK_DELAY_MS", "WHATSAPP_SEND_TIMEOUT_MS",
++    "WHATSAPP_BRIDGE_HOST", "WHATSAPP_BRIDGE_ALLOWED_HOSTS",
+ )
+ _TEXT_INJECT_EXTS = {".txt", ".md", ".csv", ".json", ".xml", ".yaml", ".yml", ".log", ".py", ".js", ".ts", ".html", ".css"}
+ _MAX_TEXT_INJECT_BYTES = 100 * 1024  # matches Telegram/Discord/Slack
+diff --git a/scripts/whatsapp-bridge/bridge.host.test.mjs b/scripts/whatsapp-bridge/bridge.host.test.mjs
+new file mode 100644
+index 0000000..ce52d6b
+--- /dev/null
++++ b/scripts/whatsapp-bridge/bridge.host.test.mjs
+@@ -0,0 +1,100 @@
++/**
++ * Integration test for the bridge listen address (WHATSAPP_BRIDGE_HOST) and the extra accepted
++ * Host names (WHATSAPP_BRIDGE_ALLOWED_HOSTS). Unlike the pure-helper tests, this spawns the real
++ * bridge.js (the behaviour lives at module load) with a temp HOME/session, no WhatsApp login, so
++ * /send answers 503 once the Host check passed and 400 when it did not.
++ *
++ * Run: node --test bridge.host.test.mjs
++ */
++
++import { test } from 'node:test';
++import { strict as assert } from 'node:assert';
++import { spawn } from 'node:child_process';
++import { mkdtempSync, rmSync } from 'node:fs';
++import http from 'node:http';
++import net from 'node:net';
++import os from 'node:os';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const BRIDGE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'bridge.js');
++const sleep = ms => new Promise(r => setTimeout(r, ms));
++
++const freePort = () => new Promise((resolve, reject) => {
++  const s = net.createServer();
++  s.once('error', reject);
++  s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
++});
++
++// Request (default POST /send) with an explicit Host header; returns the status or 0 when the connection fails.
++const post = (addr, port, host, method = 'POST', urlPath = '/send') => new Promise(resolve => {
++  const req = http.request({ host: addr, port, path: urlPath, method, agent: false, headers: { Host: host, 'Content-Type': 'application/json' }, timeout: 3000 },
++    res => { res.resume(); resolve(res.statusCode); });
++  req.on('error', () => resolve(0));
++  req.on('timeout', () => { req.destroy(); resolve(0); });
++  req.end(method === 'GET' ? undefined : '{}');
++});
++
++async function withBridge(extraEnv, fn) {
++  const home = mkdtempSync(path.join(os.tmpdir(), 'bridge-host-'));
++  const port = await freePort();
++  const env = { PATH: process.env.PATH, HOME: home, HERMES_HOME: home, TMPDIR: home, ...extraEnv };
++  const child = spawn(process.execPath, [BRIDGE, '--port', String(port), '--session', path.join(home, 'session')], { env, stdio: 'ignore' });
++  try {
++    let up = false;
++    for (let i = 0; i < 100 && !up; i += 1) {
++      assert.equal(child.exitCode, null, 'bridge exited before listening');
++      up = (await post('127.0.0.1', port, 'localhost')) !== 0;
++      if (!up) await sleep(200);
++    }
++    assert.ok(up, 'bridge never started listening');
++    return await fn(port);
++  } finally {
++    child.kill('SIGKILL');
++    rmSync(home, { recursive: true, force: true });
++  }
++}
++
++const externalIp = Object.values(os.networkInterfaces()).flat().find(i => i && i.family === 'IPv4' && !i.internal)?.address;
++
++// (a) default: loopback only, loopback Host accepted, foreign Host rejected.
++test('default keeps loopback-only Host check', async () => {
++  await withBridge({}, async port => {
++    assert.equal(await post('127.0.0.1', port, `localhost:${port}`), 503, 'localhost Host must pass the check');
++    assert.equal(await post('127.0.0.1', port, 'x.svc'), 400);
++  });
++});
++
++test('default does not listen on the non-loopback IP', { skip: externalIp ? false : 'no non-loopback IPv4 on this machine' }, async () => {
++  await withBridge({}, async port => {
++    assert.equal(await post(externalIp, port, 'localhost'), 0, 'connection must be refused');
++  });
++});
++
++// (b) opt-in: any interface + extra names (trimmed, case-insensitive, exact match).
++test('WHATSAPP_BRIDGE_HOST=0.0.0.0 + ALLOWED_HOSTS accept only the listed Host names', async () => {
++  const env = { WHATSAPP_BRIDGE_HOST: '0.0.0.0', WHATSAPP_BRIDGE_ALLOWED_HOSTS: 'ponte.nyra.svc, Outro.Svc' };
++  await withBridge(env, async port => {
++    assert.equal(await post('127.0.0.1', port, `ponte.nyra.svc:${port}`), 503);
++    assert.equal(await post('127.0.0.1', port, 'outro.svc'), 503, 'entry is trimmed and lower-cased');
++    assert.equal(await post('127.0.0.1', port, 'maligno.com'), 400);
++    assert.equal(await post('127.0.0.1', port, 'ponte.nyra.svc.evil.com'), 400, 'exact match, not suffix/prefix');
++    if (externalIp) assert.equal(await post(externalIp, port, 'ponte.nyra.svc'), 503, 'reachable on the external IP');
++  });
++});
++
++// (c) beyond loopback only POST /send is served; the local gateway keeps every route.
++test('non-loopback peer may only POST /send; loopback peer keeps all routes', { skip: externalIp ? false : 'no non-loopback IPv4 on this machine' }, async () => {
++  const env = { WHATSAPP_BRIDGE_HOST: '0.0.0.0', WHATSAPP_BRIDGE_ALLOWED_HOSTS: 'ponte.nyra.svc' };
++  await withBridge(env, async port => {
++    const ext = (m, p) => post(externalIp, port, 'ponte.nyra.svc', m, p);
++    assert.equal(await ext('POST', '/send'), 503, '/send passes the peer gate');
++    assert.equal(await ext('POST', '/send-media'), 403, 'exact path, not startsWith');
++    assert.equal(await ext('GET', '/messages'), 403);
++    assert.equal(await ext('GET', '/health'), 403);
++    assert.equal(await ext('POST', '/edit'), 403);
++    assert.equal(await ext('GET', '/send'), 403, 'method matters too');
++    assert.equal(await post('127.0.0.1', port, 'localhost', 'GET', '/health'), 200);
++    assert.equal(await post('127.0.0.1', port, 'localhost', 'GET', '/messages'), 200);
++  });
++});
+diff --git a/scripts/whatsapp-bridge/bridge.js b/scripts/whatsapp-bridge/bridge.js
+index db12f33..c34c7e6 100644
+--- a/scripts/whatsapp-bridge/bridge.js
++++ b/scripts/whatsapp-bridge/bridge.js
+@@ -876,8 +876,18 @@ const _ACCEPTED_HOST_VALUES = new Set([
+   '127.0.0.1',
+   '[::1]',
+   '::1',
++  // Opt-in: a cluster Service name (e.g. hermes-whatsapp.ns.svc) when the bridge is reached from
++  // other pods. Keeps the rebinding defence: only these exact names are accepted.
++  ...String(process.env.WHATSAPP_BRIDGE_ALLOWED_HOSTS || '')
++    .split(',')
++    .map((h) => h.trim().toLowerCase())
++    .filter(Boolean),
+ ]);
+ 
++// Opt-in: listen beyond loopback (e.g. 0.0.0.0 inside a pod whose network policy decides who
++// reaches it). Default stays loopback-only.
++const BRIDGE_HOST = process.env.WHATSAPP_BRIDGE_HOST || '127.0.0.1';
++
+ app.use((req, res, next) => {
+   const raw = (req.headers.host || '').trim();
+   if (!raw) {
+@@ -896,6 +906,17 @@ app.use((req, res, next) => {
+   next();
+ });
+ 
++// With WHATSAPP_BRIDGE_HOST beyond loopback, other pods may only send text: the bridge has no auth,
++// and the other routes read local files (/send-media), drain the gateway's inbox (/messages) or
++// act on existing chats.
++const _LOOPBACK_PEERS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
++app.use((req, res, next) => {
++  if (_LOOPBACK_PEERS.has(req.socket.remoteAddress) || (req.method === 'POST' && req.path === '/send')) {
++    return next();
++  }
++  return res.status(403).json({ error: 'Only POST /send is served beyond loopback' });
++});
++
+ // Poll for new messages (long-poll style)
+ app.get('/messages', (req, res) => {
+   const msgs = messageQueue.splice(0, messageQueue.length).concat(deliveryQueue.splice(0, deliveryQueue.length));
+@@ -1221,7 +1242,7 @@ if (PAIR_ONLY) {
+     process.exit(1);
+   });
+ } else {
+-  const server = app.listen(PORT, '127.0.0.1', () => {
++  const server = app.listen(PORT, BRIDGE_HOST, () => {
+     console.log(`🌉 WhatsApp bridge listening on port ${PORT} (mode: ${WHATSAPP_MODE})`);
+     console.log(`📁 Session stored in: ${SESSION_DIR}`);
+     if (ALLOWED_USERS.size > 0) {
+@@ -1245,7 +1266,7 @@ if (PAIR_ONLY) {
+   // with a bare stack trace; the adapter's reconnect loop retried blind. Fail loudly and fast.
+   server.on('error', (err) => {
+     if (err && err.code === 'EADDRINUSE') {
+-      console.error(`FATAL: port ${PORT} already in use on 127.0.0.1 — another bridge or process is listening there.`);
++      console.error(`FATAL: port ${PORT} already in use on ${BRIDGE_HOST} — another bridge or process is listening there.`);
+     } else {
+       console.error(`FATAL: bridge HTTP server error: ${err && err.message ? err.message : err}`);
+     }
+diff --git a/tests/gateway/test_whatsapp_bridge_host_env.py b/tests/gateway/test_whatsapp_bridge_host_env.py
+new file mode 100644
+index 0000000..d181a89
+--- /dev/null
++++ b/tests/gateway/test_whatsapp_bridge_host_env.py
+@@ -0,0 +1,47 @@
++"""WHATSAPP_BRIDGE_HOST / WHATSAPP_BRIDGE_ALLOWED_HOSTS must reach the Node bridge subprocess.
++
++bridge.js reads both from process.env (listen address + extra accepted Host names). The adapter only
++forwards keys listed in _BRIDGE_PASSTHROUGH_ENV, so dropping them there silently reverts a pod to
++loopback-only. Absent values must be popped so a launch-env value never leaks into another profile.
++"""
++
++import pytest
++
++from gateway.config import PlatformConfig
++
++_KEYS = ("WHATSAPP_BRIDGE_HOST", "WHATSAPP_BRIDGE_ALLOWED_HOSTS")
++
++
++def _bridge_env():
++    from plugins.platforms.whatsapp.adapter import WhatsAppAdapter
++    return WhatsAppAdapter(PlatformConfig(enabled=True, extra={}))._bridge_env()
++
++
++def test_bridge_host_env_is_forwarded(monkeypatch):
++    """Both vars set -> present, verbatim, in the bridge env (dies if the keys leave the passthrough tuple)."""
++    monkeypatch.setenv("WHATSAPP_BRIDGE_HOST", "0.0.0.0")
++    monkeypatch.setenv("WHATSAPP_BRIDGE_ALLOWED_HOSTS", "ponte.nyra.svc, Outro.Svc")
++    env = _bridge_env()
++    assert env["WHATSAPP_BRIDGE_HOST"] == "0.0.0.0"
++    assert env["WHATSAPP_BRIDGE_ALLOWED_HOSTS"] == "ponte.nyra.svc, Outro.Svc"
++
++
++@pytest.mark.parametrize("key", _KEYS)
++def test_each_bridge_host_key_is_forwarded_alone(monkeypatch, key):
++    """One key at a time: removing just one of the two from the tuple is caught."""
++    for k in _KEYS:
++        monkeypatch.delenv(k, raising=False)
++    monkeypatch.setenv(key, "valor-x")
++    env = _bridge_env()
++    assert env[key] == "valor-x"
++    assert [k for k in _KEYS if k in env] == [key]
++
++
++def test_bridge_host_env_absent_is_removed(monkeypatch):
++    """Unset (or empty) -> key not in the bridge env, so the bridge keeps its loopback-only default."""
++    for k in _KEYS:
++        monkeypatch.delenv(k, raising=False)
++    env = _bridge_env()
++    assert not any(k in env for k in _KEYS)
++    monkeypatch.setenv("WHATSAPP_BRIDGE_HOST", "")
++    assert "WHATSAPP_BRIDGE_HOST" not in _bridge_env()
