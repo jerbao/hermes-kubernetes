@@ -12,10 +12,10 @@ index 6d305f9..bfea49a 100644
  _MAX_TEXT_INJECT_BYTES = 100 * 1024  # matches Telegram/Discord/Slack
 diff --git a/scripts/whatsapp-bridge/bridge.host.test.mjs b/scripts/whatsapp-bridge/bridge.host.test.mjs
 new file mode 100644
-index 0000000..323ba95
+index 0000000..ce52d6b
 --- /dev/null
 +++ b/scripts/whatsapp-bridge/bridge.host.test.mjs
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,100 @@
 +/**
 + * Integration test for the bridge listen address (WHATSAPP_BRIDGE_HOST) and the extra accepted
 + * Host names (WHATSAPP_BRIDGE_ALLOWED_HOSTS). Unlike the pure-helper tests, this spawns the real
@@ -44,13 +44,13 @@ index 0000000..323ba95
 +  s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
 +});
 +
-+// POST /send with an explicit Host header; returns the status or 0 when the connection fails.
-+const post = (addr, port, host) => new Promise(resolve => {
-+  const req = http.request({ host: addr, port, path: '/send', method: 'POST', headers: { Host: host, 'Content-Type': 'application/json' }, timeout: 3000 },
++// Request (default POST /send) with an explicit Host header; returns the status or 0 when the connection fails.
++const post = (addr, port, host, method = 'POST', urlPath = '/send') => new Promise(resolve => {
++  const req = http.request({ host: addr, port, path: urlPath, method, agent: false, headers: { Host: host, 'Content-Type': 'application/json' }, timeout: 3000 },
 +    res => { res.resume(); resolve(res.statusCode); });
 +  req.on('error', () => resolve(0));
 +  req.on('timeout', () => { req.destroy(); resolve(0); });
-+  req.end('{}');
++  req.end(method === 'GET' ? undefined : '{}');
 +});
 +
 +async function withBridge(extraEnv, fn) {
@@ -100,8 +100,24 @@ index 0000000..323ba95
 +    if (externalIp) assert.equal(await post(externalIp, port, 'ponte.nyra.svc'), 503, 'reachable on the external IP');
 +  });
 +});
++
++// (c) beyond loopback only POST /send is served; the local gateway keeps every route.
++test('non-loopback peer may only POST /send; loopback peer keeps all routes', { skip: externalIp ? false : 'no non-loopback IPv4 on this machine' }, async () => {
++  const env = { WHATSAPP_BRIDGE_HOST: '0.0.0.0', WHATSAPP_BRIDGE_ALLOWED_HOSTS: 'ponte.nyra.svc' };
++  await withBridge(env, async port => {
++    const ext = (m, p) => post(externalIp, port, 'ponte.nyra.svc', m, p);
++    assert.equal(await ext('POST', '/send'), 503, '/send passes the peer gate');
++    assert.equal(await ext('POST', '/send-media'), 403, 'exact path, not startsWith');
++    assert.equal(await ext('GET', '/messages'), 403);
++    assert.equal(await ext('GET', '/health'), 403);
++    assert.equal(await ext('POST', '/edit'), 403);
++    assert.equal(await ext('GET', '/send'), 403, 'method matters too');
++    assert.equal(await post('127.0.0.1', port, 'localhost', 'GET', '/health'), 200);
++    assert.equal(await post('127.0.0.1', port, 'localhost', 'GET', '/messages'), 200);
++  });
++});
 diff --git a/scripts/whatsapp-bridge/bridge.js b/scripts/whatsapp-bridge/bridge.js
-index db12f33..94df9df 100644
+index db12f33..c34c7e6 100644
 --- a/scripts/whatsapp-bridge/bridge.js
 +++ b/scripts/whatsapp-bridge/bridge.js
 @@ -876,8 +876,18 @@ const _ACCEPTED_HOST_VALUES = new Set([
@@ -123,7 +139,25 @@ index db12f33..94df9df 100644
  app.use((req, res, next) => {
    const raw = (req.headers.host || '').trim();
    if (!raw) {
-@@ -1221,7 +1231,7 @@ if (PAIR_ONLY) {
+@@ -896,6 +906,17 @@ app.use((req, res, next) => {
+   next();
+ });
+ 
++// With WHATSAPP_BRIDGE_HOST beyond loopback, other pods may only send text: the bridge has no auth,
++// and the other routes read local files (/send-media), drain the gateway's inbox (/messages) or
++// act on existing chats.
++const _LOOPBACK_PEERS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
++app.use((req, res, next) => {
++  if (_LOOPBACK_PEERS.has(req.socket.remoteAddress) || (req.method === 'POST' && req.path === '/send')) {
++    return next();
++  }
++  return res.status(403).json({ error: 'Only POST /send is served beyond loopback' });
++});
++
+ // Poll for new messages (long-poll style)
+ app.get('/messages', (req, res) => {
+   const msgs = messageQueue.splice(0, messageQueue.length).concat(deliveryQueue.splice(0, deliveryQueue.length));
+@@ -1221,7 +1242,7 @@ if (PAIR_ONLY) {
      process.exit(1);
    });
  } else {
@@ -132,7 +166,7 @@ index db12f33..94df9df 100644
      console.log(`🌉 WhatsApp bridge listening on port ${PORT} (mode: ${WHATSAPP_MODE})`);
      console.log(`📁 Session stored in: ${SESSION_DIR}`);
      if (ALLOWED_USERS.size > 0) {
-@@ -1245,7 +1255,7 @@ if (PAIR_ONLY) {
+@@ -1245,7 +1266,7 @@ if (PAIR_ONLY) {
    // with a bare stack trace; the adapter's reconnect loop retried blind. Fail loudly and fast.
    server.on('error', (err) => {
      if (err && err.code === 'EADDRINUSE') {

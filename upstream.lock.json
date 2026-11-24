@@ -219,7 +219,7 @@
     },
     {
       "path": "patches/0023-whatsapp-bridge-cluster-bind.patch",
-      "sha256": "1c24370f80669a93a8efa5ea0ba57debd32863cb0772d68c12a5a85f0d8f0dba",
+      "sha256": "692d74c0f6e42ff5bd3188b5f8f5890dcff97417d0b1f220db483298d263d04f",
       "description": "Let the WhatsApp bridge listen beyond loopback and accept named cluster hosts, opt-in by env",
       "native_tests": [
         "tests/gateway/test_whatsapp_bridge_host_env.py"
