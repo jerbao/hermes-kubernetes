@@ -1,13 +1,13 @@
 diff --git a/gateway/platforms/whatsapp_common.py b/gateway/platforms/whatsapp_common.py
-index 1a4e90a6..89e84ddc 100644
+index 1a4e90a6..cd18b1a2 100644
 --- a/gateway/platforms/whatsapp_common.py
 +++ b/gateway/platforms/whatsapp_common.py
 @@ -300,6 +300,14 @@ def resolve_whatsapp_bridge_dir() -> Path:
      except OSError:
          pass
      if hermes_home_bridge.exists():
-+        # Refresh the source on every resolve: a mirror frozen at its first copy would keep spawning a pre-update
-+        # bridge (one without /auth-proof can never pass the adapter's token proof). node_modules is the mirror's
++        # Refresh the source on every resolve (backport of upstream 9edf4b18): a mirror frozen at its first copy
++        # would keep spawning a pre-update bridge. node_modules is the mirror's
 +        # own install (re-run by the adapter when package.json changes), so it is left alone.
 +        try:
 +            shutil.copytree(install_bridge, hermes_home_bridge, dirs_exist_ok=True,
