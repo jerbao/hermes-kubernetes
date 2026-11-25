@@ -333,6 +333,17 @@
       "native_tests": [
         "tests/gateway/test_whatsapp_bridge_host_env.py"
       ]
+    },
+    {
+      "path": "patches/0024-whatsapp-bridge-mirror-refresh.patch",
+      "description": "Refresh the WhatsApp bridge mirror in HERMES_HOME from the install tree (backport of upstream 9edf4b18)",
+      "files": [
+        "gateway/platforms/whatsapp_common.py",
+        "tests/gateway/test_whatsapp_bridge_dir_resolution.py"
+      ],
+      "native_tests": [
+        "tests/gateway/test_whatsapp_bridge_dir_resolution.py"
+      ]
     }
   ]
 }
