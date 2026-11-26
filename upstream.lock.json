@@ -235,7 +235,7 @@
     },
     {
       "path": "patches/0025-wake-when-unviewed-completion.patch",
-      "sha256": "45fafff45ae1af5468b2ec6cc83837b777aca498f14d34aa575befee2ddb301a",
+      "sha256": "79aa277a327cbb4078aa527f02487893f4dd9f1d806c6ee2922509f6cf0401af",
       "description": "Let a background process ask that its completion run a turn even with no viewer attached (never a note)",
       "native_tests": [
         "tests/gateway/test_unviewed_completion_notes.py",

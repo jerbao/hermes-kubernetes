@@ -1,5 +1,5 @@
 diff --git a/gateway/run_notifications.py b/gateway/run_notifications.py
-index 4cbd2602..fefbc35c 100644
+index 4cbd2602..ff679260 100644
 --- a/gateway/run_notifications.py
 +++ b/gateway/run_notifications.py
 @@ -173,6 +173,8 @@ def _watch_notification_metadata(evt: dict, source) -> dict[str, Any]:
@@ -11,11 +11,12 @@ index 4cbd2602..fefbc35c 100644
      if source.platform == Platform.LOCAL:
          # A local completion persists as the async-result card the in-process TUI wrote, and a tick
          # carries its CLI receipt; messaging rows stay internal_notification, as on main.
-@@ -1430,7 +1432,8 @@ class GatewayNotificationsMixin(GatewayUpdateNotificationsMixin, GatewayNotifica
+@@ -1430,7 +1432,9 @@ class GatewayNotificationsMixin(GatewayUpdateNotificationsMixin, GatewayNotifica
              # sibling is never discarded with it.
              delivered = None
              for _text, candidate_evt, _future in entries_to_deliver:
 -                candidate_evt = dict(candidate_evt, _display_text=display_text)
++                # one batch is one turn: a sibling that must wake the session wakes it for all of them
 +                candidate_evt = dict(candidate_evt, _display_text=display_text, wake_when_unviewed=any(
 +                    evt.get("wake_when_unviewed") for _text, evt, _future in entries_to_deliver))
                  if getattr(self, 'session_authority', None) is not None:
