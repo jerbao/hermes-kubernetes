@@ -1,0 +1,266 @@
+diff --git a/gateway/run_notifications.py b/gateway/run_notifications.py
+index 4cbd2602..ff679260 100644
+--- a/gateway/run_notifications.py
++++ b/gateway/run_notifications.py
+@@ -173,6 +173,8 @@ def _watch_notification_metadata(evt: dict, source) -> dict[str, Any]:
+         metadata["gateway_session_id"] = parent_session_id
+     if evt.get('_automation_identities'):
+         metadata['automation_identities'] = evt['_automation_identities']
++    if evt.get("wake_when_unviewed"):
++        metadata["wake_when_unviewed"] = True
+     if source.platform == Platform.LOCAL:
+         # A local completion persists as the async-result card the in-process TUI wrote, and a tick
+         # carries its CLI receipt; messaging rows stay internal_notification, as on main.
+@@ -1430,7 +1432,9 @@ class GatewayNotificationsMixin(GatewayUpdateNotificationsMixin, GatewayNotifica
+             # sibling is never discarded with it.
+             delivered = None
+             for _text, candidate_evt, _future in entries_to_deliver:
+-                candidate_evt = dict(candidate_evt, _display_text=display_text)
++                # one batch is one turn: a sibling that must wake the session wakes it for all of them
++                candidate_evt = dict(candidate_evt, _display_text=display_text, wake_when_unviewed=any(
++                    evt.get("wake_when_unviewed") for _text, evt, _future in entries_to_deliver))
+                 if getattr(self, 'session_authority', None) is not None:
+                     candidate_evt = dict(candidate_evt, _automation_identities=[
+                         producer_identity(self, evt) for _text, evt, _future in entries_to_deliver])
+diff --git a/gateway/session_automation.py b/gateway/session_automation.py
+index 331e62b2..83937a74 100644
+--- a/gateway/session_automation.py
++++ b/gateway/session_automation.py
+@@ -142,7 +142,8 @@ def _waiting_completion(authority, evt, event):
+         return None
+     descriptor = _descriptor(tail['payload'])
+     if (descriptor.get('notification_category', 'result') != event.metadata.get('notification_category', 'result')
+-            or descriptor.get('display_kind') != event.metadata.get('display_kind')):
++            or descriptor.get('display_kind') != event.metadata.get('display_kind')
++            or bool(descriptor.get('wake_when_unviewed')) != bool(event.metadata.get('wake_when_unviewed'))):
+         return None
+     return {**tail, '_skip': skip}
+ 
+@@ -428,7 +429,8 @@ def automation_display_metadata(metadata):
+ # proof at execution from the target the pre-claim check validated, and the turn's resolver reads it.
+ _AUTOMATION_METADATA = frozenset({'gateway_session_key', 'gateway_session_id', 'automation_identities',
+     'turn_author', 'notification_origin', 'original_trigger_message_id', 'notification_category',
+-    'display_kind', 'display_text', 'gateway_proven_session_id', 'gateway_completion_ids', 'heartbeat_tick'})
++    'display_kind', 'display_text', 'gateway_proven_session_id', 'gateway_completion_ids', 'heartbeat_tick',
++    'wake_when_unviewed'})
+ 
+ 
+ def admission_display(payload):
+@@ -553,6 +555,8 @@ def snapshot_local_automation(authority, adapter, event, identity, entry):
+     descriptor.update(automation_notification_metadata(event.metadata))
+     descriptor.update(automation_display_metadata(event.metadata))
+     descriptor.update(_tick_metadata(event.metadata))
++    if event.metadata.get('wake_when_unviewed') is True:
++        descriptor['wake_when_unviewed'] = True
+     if event.metadata.get('turn_author') is not None:
+         from agent.turn_author import parse_turn_author
+         descriptor['turn_author'] = parse_turn_author(event.metadata['turn_author'])
+diff --git a/gateway/session_completion_notes.py b/gateway/session_completion_notes.py
+index 6982d2c3..22ca1adb 100644
+--- a/gateway/session_completion_notes.py
++++ b/gateway/session_completion_notes.py
+@@ -33,7 +33,9 @@ def _producer(identity):
+ def noted_completion(row):
+     """*row* is a local completion admission: a note when it runs with no viewer attached."""
+     descriptor = (row or {}).get('payload', {}).get('local_automation_v1')
+-    return descriptor is not None and _producer(descriptor['identity']) in _NOTED_PRODUCERS | _ALWAYS_NOTED
++    if descriptor is None or descriptor.get('wake_when_unviewed') is True:
++        return False
++    return _producer(descriptor['identity']) in _NOTED_PRODUCERS | _ALWAYS_NOTED
+ 
+ 
+ async def reopen_for_turn(authority, ref):
+diff --git a/tests/gateway/test_unviewed_completion_notes.py b/tests/gateway/test_unviewed_completion_notes.py
+index 5561c249..04f346f1 100644
+--- a/tests/gateway/test_unviewed_completion_notes.py
++++ b/tests/gateway/test_unviewed_completion_notes.py
+@@ -401,3 +401,85 @@ async def test_closed_tip_lookup_defers_only_a_failed_read():
+         assert await lookup(db(error), entry, 'lc7-root', {'end_reason': 'compression'}) == ''
+     with pytest.raises(AttributeError):
+         await lookup(db(AttributeError('bug')), entry, 'lc7-root', {'end_reason': 'compression'})
++
++
++# --- wake_when_unviewed: a completion that must run a turn even with no viewer -------------------
++
++async def _admit_process(runner, authority, ref, name, wake):
++    """Admit a process completion like ``_deliver`` does, with the ``wake_when_unviewed`` metadata."""
++    import json
++    from gateway.platforms.event import MessageEvent
++    live = authority.sessions[ref.session_id]
++    target = _target(runner, authority, ref)
++    metadata = {'gateway_session_key': live.route, 'gateway_session_id': target,
++                'display_kind': 'process_complete', 'display_text': f'Finished: {name}'}
++    if wake:
++        metadata['wake_when_unviewed'] = True
++    event = MessageEvent(text=f'[finished] RESULT_{name}', source=live.source, internal=True, metadata=metadata)
++    identity = json.dumps(['completion', name, 1700000000.0], separators=(',', ':'))
++    await authority.admit_automation(runner._adapter_for_source(live.source), event, identity)
++    return target
++
++
++@pytest.mark.asyncio
++async def test_wake_flag_completion_without_viewer_runs_a_turn_not_a_note(tmp_path, monkeypatch):
++    """Drops if ``noted_completion`` ignores the descriptor flag: the completion would be a note."""
++    runner, authority, ref, _actor = await _local(tmp_path, monkeypatch)
++    try:
++        target = await _admit_process(runner, authority, ref, 'proc_wake', wake=True)
++        seen = _turns(runner, authority, target)
++        await authority._drain(ref)
++        assert [text for text, _ in seen] == ['[finished] RESULT_proc_wake']
++        assert _notes(authority, target) == []
++        assert [r['outcome'] for r in _admissions(authority, ref)] == ['completed']
++    finally:
++        authority.db.close()
++
++
++@pytest.mark.asyncio
++async def test_completion_without_wake_flag_stays_a_note(tmp_path, monkeypatch):
++    """Control: same scenario minus the flag is a note and no turn."""
++    runner, authority, ref, _actor = await _local(tmp_path, monkeypatch)
++    try:
++        target = await _admit_process(runner, authority, ref, 'proc_plain', wake=False)
++        seen = _turns(runner, authority, target)
++        await authority._drain(ref)
++        assert seen == [] and len(_notes(authority, target)) == 1
++    finally:
++        authority.db.close()
++
++
++@pytest.mark.asyncio
++async def test_deliver_notification_with_wake_flag_becomes_a_turn(tmp_path, monkeypatch):
++    """Drops if ``_watch_notification_metadata`` or the descriptor snapshot loses the evt key."""
++    runner, authority, ref, _actor = await _local(tmp_path, monkeypatch)
++    try:
++        target = _target(runner, authority, ref)
++        evt = dict(_process_event(authority, ref, target, 'proc_wake'), wake_when_unviewed=True)
++        assert await runner._deliver_completion_notification('[finished] RESULT_proc_wake', evt) is True
++        seen = _turns(runner, authority, target)
++        await authority._drain(ref)
++        # _deliver_completion_notification appends the internal-notification footer to the text.
++        assert len(seen) == 1 and seen[0][0].startswith('[finished] RESULT_proc_wake')
++        assert _notes(authority, target) == []
++        assert [r['outcome'] for r in _admissions(authority, ref)] == ['completed']
++    finally:
++        authority.db.close()
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize('first_wakes', [True, False], ids=['flag_first', 'flag_second'])
++async def test_completions_with_and_without_wake_flag_do_not_fold(tmp_path, monkeypatch, first_wakes):
++    """Drops if ``_waiting_completion`` stops comparing the flag: a note-only result would be
++    folded into a turn (or the reverse) and the two admissions would collapse into one."""
++    runner, authority, ref, _actor = await _local(tmp_path, monkeypatch)
++    try:
++        target = _target(runner, authority, ref)
++        for name, wake in (('proc_a', first_wakes), ('proc_b', not first_wakes)):
++            evt = _process_event(authority, ref, target, name)
++            if wake:
++                evt['wake_when_unviewed'] = True
++            assert await runner._deliver_completion_notification(f'[finished] RESULT_{name}', evt) is True
++        assert [r['status'] for r in _admissions(authority, ref)] == ['queued', 'queued']
++    finally:
++        authority.db.close()
+diff --git a/tests/tools/test_process_registry.py b/tests/tools/test_process_registry.py
+index 232f3ce3..6dbd4104 100644
+--- a/tests/tools/test_process_registry.py
++++ b/tests/tools/test_process_registry.py
+@@ -3155,3 +3155,21 @@ def test_model_not_found_notice_absent_when_fallback_chain_configured(monkeypatc
+     text = _format_async(evt)
+     assert text.count("SUBAGENT MODEL REJECTED") == 1
+     assert "No fallback chain is configured" not in text
++
++
++@pytest.mark.parametrize("wake", [True, False])
++def test_publish_finished_carries_wake_when_unviewed_only_when_set(registry, monkeypatch, wake):
++    """Drops if the completion event loses the flag, or always carries it (key must be absent when unset)."""
++    monkeypatch.setattr(registry, "_write_checkpoint", lambda: None)
++    session = _make_session(sid="proc_wake", exited=True, exit_code=0)
++    session.notify_on_complete = True
++    session.wake_when_unviewed = wake
++
++    registry._publish_finished(session, was_running=True)
++
++    event = registry.completion_queue.get_nowait()
++    assert event["type"] == "completion" and event["session_id"] == "proc_wake"
++    if wake:
++        assert event["wake_when_unviewed"] is True
++    else:
++        assert "wake_when_unviewed" not in event
+diff --git a/tools/process_registry.py b/tools/process_registry.py
+index 1e14aa0e..af16dc5b 100644
+--- a/tools/process_registry.py
++++ b/tools/process_registry.py
+@@ -585,6 +585,7 @@ class ProcessSession:
+     parent_session_id: str = ""
+     notify_on_complete: bool = False            # Queue agent notification on exit
+     completion_output_chars: int = 0            # Output chars the completion carries; 0 = COMPLETION_OUTPUT_CHARS
++    wake_when_unviewed: bool = False            # completion runs a turn even with no viewer attached (never a note)
+     watch_patterns: list[str] = field(default_factory=list)
+     heartbeat_seconds: int = 0                  # 0 = off; else a "heartbeat" event every N s while running
+     total_output_chars: int = 0                 # Chars ever ingested (the buffer is a rolling tail)
+@@ -658,7 +659,7 @@ _CHECKPOINT_FIELDS = (
+     "command", "pid", "pid_scope", "host_start_time", "systemd_unit", "wsl_chain", "cwd",
+     "started_at", "task_id", "owner_task_id", "session_key",
+     *(f"watcher_{k}" for k in _WATCHER_ROUTE_KEYS), "watcher_interval",
+-    "parent_session_id", "notify_on_complete", "completion_output_chars", "watch_patterns",
++    "parent_session_id", "notify_on_complete", "completion_output_chars", "wake_when_unviewed", "watch_patterns",
+     "heartbeat_seconds", "persist_on_release", "output_log")
+ _CHECKPOINT_DEFAULTS = {
+     f.name: ([] if f.name == "watch_patterns" else f.default)
+@@ -1593,6 +1594,7 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
+                 "owner_task_id": session.owner_task_id,
+                 "command": session.command,
+                 **({"handoff_note": session.handoff_note} if session.handoff_note else {}),
++                **({"wake_when_unviewed": True} if session.wake_when_unviewed else {}),
+                 **self._exit_fields(session),
+                 # A consumer that relays the output (a bot DM's reply) must know it is not whole.
+                 **_completion_output(session),
+diff --git a/tools/terminal_tool.py b/tools/terminal_tool.py
+index d99296ba..cb9f1b86 100644
+--- a/tools/terminal_tool.py
++++ b/tools/terminal_tool.py
+@@ -1482,6 +1482,7 @@ def terminal_tool(
+     watch_patterns: Optional[list[str]] = None,
+     _host_local: bool = False,
+     _completion_output_chars: int = 0,
++    _wake_when_unviewed: bool = False,
+     heartbeat: int = 0,
+     persist_on_release: bool = False,
+ ) -> str:
+@@ -1503,6 +1504,8 @@ def terminal_tool(
+     process_manage kill (#41225).
+     ``_completion_output_chars`` (internal) sizes the completion notification's output for a
+     spawner whose output is the payload (a bot DM's reply); 0 keeps the usual tail.
++    ``_wake_when_unviewed`` (internal) makes the completion a turn even when no viewer watches the
++    session, for a spawner whose result the agent must act on (a background agent's reply).
+     ``_host_local`` forces the local backend for Hermes-owned control-plane
+     children (kept in a separate env cache from the configured backend).
+     """
+@@ -1578,6 +1581,7 @@ def terminal_tool(
+                     watch_patterns=watch_patterns, approval_note=verdict.note,
+                     pty_disabled_reason=_PTY_DISABLED_REASON if pty_disabled else None,
+                     completion_output_chars=_completion_output_chars,
++                    wake_when_unviewed=_wake_when_unviewed,
+                     heartbeat_seconds=heartbeat,
+                     persist_on_release=persist_on_release,
+                     auto_backgrounded=auto_bg is not None and plan.promoted_from_foreground_timeout is None,
+diff --git a/tools/terminal_tool_background.py b/tools/terminal_tool_background.py
+index 8c1f02ad..df11be35 100644
+--- a/tools/terminal_tool_background.py
++++ b/tools/terminal_tool_background.py
+@@ -151,6 +151,7 @@ def spawn_background_process(
+     session_key: str, workdir: Optional[str], cwd: str, effective_pty: bool,
+     notify_on_complete: bool, watch_patterns: Optional[list[str]], approval_note: Optional[str],
+     completion_output_chars: int = 0,
++    wake_when_unviewed: bool = False,
+     pty_disabled_reason: Optional[str],
+     heartbeat_seconds: int = 0,
+     persist_on_release: bool = False,
+@@ -211,6 +212,7 @@ def spawn_background_process(
+             result_data["notify_on_complete"] = True
+             if completion_output_chars:
+                 proc_session.completion_output_chars = int(completion_output_chars)
++            proc_session.wake_when_unviewed = bool(wake_when_unviewed)
+             if proc_session.watcher_platform:
+                 _register_completion_watcher(process_registry, proc_session, session_key)
+             from agent.delegation_context import is_delegated_child_context
