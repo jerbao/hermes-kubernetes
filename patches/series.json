@@ -344,6 +344,24 @@
       "native_tests": [
         "tests/gateway/test_whatsapp_bridge_dir_resolution.py"
       ]
+    },
+    {
+      "path": "patches/0025-wake-when-unviewed-completion.patch",
+      "description": "Let a background process ask that its completion run a turn even with no viewer attached (never a note)",
+      "files": [
+        "gateway/run_notifications.py",
+        "gateway/session_automation.py",
+        "gateway/session_completion_notes.py",
+        "tests/gateway/test_unviewed_completion_notes.py",
+        "tests/tools/test_process_registry.py",
+        "tools/process_registry.py",
+        "tools/terminal_tool.py",
+        "tools/terminal_tool_background.py"
+      ],
+      "native_tests": [
+        "tests/gateway/test_unviewed_completion_notes.py",
+        "tests/tools/test_process_registry.py"
+      ]
     }
   ]
 }
