@@ -362,6 +362,18 @@
         "tests/gateway/test_unviewed_completion_notes.py",
         "tests/tools/test_process_registry.py"
       ]
+    },
+    {
+      "path": "patches/0026-tool-search-keep-list.patch",
+      "description": "Let tools.tool_search.keep pin named plugin or MCP tools to the visible tool array",
+      "files": [
+        "hermes_cli/config_defaults.py",
+        "tests/tools/test_tool_search.py",
+        "tools/tool_search.py"
+      ],
+      "native_tests": [
+        "tests/tools/test_tool_search.py"
+      ]
     }
   ]
 }

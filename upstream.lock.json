@@ -241,6 +241,14 @@
         "tests/gateway/test_unviewed_completion_notes.py",
         "tests/tools/test_process_registry.py"
       ]
+    },
+    {
+      "path": "patches/0026-tool-search-keep-list.patch",
+      "sha256": "c02077aa9780656a96373ffa66c66ea0639ebb2cdf1887de7d693b74f92c7296",
+      "description": "Let tools.tool_search.keep pin named plugin or MCP tools to the visible tool array",
+      "native_tests": [
+        "tests/tools/test_tool_search.py"
+      ]
     }
   ],
   "native_tests": [
@@ -299,6 +307,7 @@
     "tests/gateway/test_whatsapp_bridge_host_env.py",
     "tests/gateway/test_whatsapp_bridge_dir_resolution.py",
     "tests/gateway/test_unviewed_completion_notes.py",
-    "tests/tools/test_process_registry.py"
+    "tests/tools/test_process_registry.py",
+    "tests/tools/test_tool_search.py"
   ]
 }
