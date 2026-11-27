@@ -1,0 +1,287 @@
+diff --git a/hermes_cli/config_defaults.py b/hermes_cli/config_defaults.py
+index 5e472b68..1522f851 100644
+--- a/hermes_cli/config_defaults.py
++++ b/hermes_cli/config_defaults.py
+@@ -2005,6 +2005,9 @@ DEFAULT_CONFIG = {
+                 "show_tip", "desktop_project", "close_terminal",
+                 "set_theme", "read_terminal", "read_window_below", "focus_pane",
+             ],
++            # Tools that are never deferred, plugin and MCP tools included: they stay in the
++            # model-facing array with their full schema. For a plugin tool the persona relies on.
++            "keep": [],
+         },
+         # Remote connector discovery/lifecycle through the Nous tool gateway.
+         # The flag is the user's off switch; availability additionally requires
+diff --git a/tests/tools/test_tool_search.py b/tests/tools/test_tool_search.py
+index 2a89fab8..53c2fe37 100644
+--- a/tests/tools/test_tool_search.py
++++ b/tests/tools/test_tool_search.py
+@@ -921,3 +921,154 @@ class TestDeferredCallSchemaProbe:
+         }, calls)
+ 
+         assert validate_deferred_call_args(name, {"payload": {"anything": True}}) is None
++
++
++# ---------------------------------------------------------------------------
++# tools.tool_search.keep — tools pinned to the visible array, never deferred
++# ---------------------------------------------------------------------------
++
++
++class TestKeepTools:
++    @staticmethod
++    def _register(name, toolset):
++        from tools.registry import registry
++
++        registry.register(
++            name=name,
++            handler=lambda args, task_id=None, **kw: json.dumps({"ok": True}),
++            schema=_td(name, f"desc for {name}", {"q": {"type": "string"}})["function"],
++            toolset=toolset,
++        )
++
++    @pytest.mark.parametrize("raw", [{}, {"keep": None}, {"enabled": "on"}])
++    def test_from_raw_keep_absent_is_empty_frozenset(self, raw):
++        """Derruba: from_raw que deixa keep_tools None/set/outro tipo quando 'keep' falta."""
++        from tools.tool_search import ToolSearchConfig
++
++        assert ToolSearchConfig.from_raw(raw).keep_tools == frozenset()
++        assert isinstance(ToolSearchConfig.from_raw(raw).keep_tools, frozenset)
++        assert ToolSearchConfig.from_raw(None).keep_tools == frozenset()
++
++    def test_from_raw_keep_list_is_stripped_and_drops_blanks(self):
++        """Derruba: from_raw ignorar 'keep' (ou nao dar strip / nao descartar vazios)."""
++        from tools.tool_search import ToolSearchConfig
++
++        cfg = ToolSearchConfig.from_raw({"keep": [" my_plugin_tool ", "", "  ", "mcp_x_y", "my_plugin_tool"]})
++        assert cfg.keep_tools == frozenset({"my_plugin_tool", "mcp_x_y"})
++        assert isinstance(cfg.keep_tools, frozenset)
++
++    @pytest.mark.parametrize("scalar", ["my_plugin_tool", 7, True])
++    def test_from_raw_keep_scalar_is_empty_not_iterated_chars(self, scalar):
++        """Derruba: iterar a string 'keep: my_plugin_tool' como letras soltas."""
++        from tools.tool_search import ToolSearchConfig
++
++        assert ToolSearchConfig.from_raw({"keep": scalar}).keep_tools == frozenset()
++
++    def test_keep_default_is_registered_empty_list(self):
++        """O default em DEFAULT_CONFIG existe (para `hermes config set`) e e []."""
++        from hermes_cli.config_defaults import DEFAULT_CONFIG
++
++        assert DEFAULT_CONFIG["tools"]["tool_search"]["keep"] == []
++
++    @pytest.mark.parametrize("toolset", ["keepprobeplugin", "mcp-keep-probe"])
++    def test_plugin_and_mcp_tool_deferrable_without_keep_not_with(self, toolset):
++        """Derruba: remover `or name in keep_tools` em is_deferrable_tool_name."""
++        from tools.tool_search import is_deferrable_tool_name
++
++        name = f"keep_probe_{toolset.replace('-', '_')}"
++        self._register(name, toolset)
++        assert is_deferrable_tool_name(name)
++        assert is_deferrable_tool_name(name, None, frozenset({"outro"}))
++        assert not is_deferrable_tool_name(name, None, frozenset({name}))
++
++    def test_keep_beats_an_explicit_defer_entry(self):
++        """keep vence defer: ferramenta nas duas listas fica visivel."""
++        from tools.tool_search import is_deferrable_tool_name
++
++        assert is_deferrable_tool_name("terminal", frozenset({"terminal"}))
++        assert not is_deferrable_tool_name("terminal", frozenset({"terminal"}), frozenset({"terminal"}))
++
++    def test_classify_tools_honours_keep(self):
++        """Derruba: classify_tools que nao repassa keep_tools."""
++        from tools.tool_search import classify_tools
++
++        self._register("keep_cls_a", "keepclsplugin")
++        self._register("keep_cls_b", "keepclsplugin")
++        defs = [_td("keep_cls_a"), _td("keep_cls_b")]
++        visible, deferrable = classify_tools(defs, None, frozenset({"keep_cls_a"}))
++        assert [td["function"]["name"] for td in visible] == ["keep_cls_a"]
++        assert [td["function"]["name"] for td in deferrable] == ["keep_cls_b"]
++
++    def test_assemble_keeps_pinned_plugin_tool_visible_with_full_schema(self):
++        """Derruba: assemble_tool_defs nao passar keep_tools a classify_tools; schema
++        da ferramenta pinada vem completo, as demais de plugin ficam atras do bridge."""
++        from tools.tool_search import BRIDGE_TOOL_NAMES, ToolSearchConfig, assemble_tool_defs
++
++        pinned = "keep_asm_pinned"
++        others = ["keep_asm_other_1", "keep_asm_other_2"]
++        for n in [pinned, *others]:
++            self._register(n, "keepasmplugin")
++        defs = [_td("terminal", "Run a command")] + [
++            _td(n, f"desc for {n}", {"q": {"type": "string"}}) for n in [pinned, *others]
++        ]
++
++        base = assemble_tool_defs(defs, context_length=200_000,
++                                  config=ToolSearchConfig.from_raw({"enabled": "on"}))
++        assert base.activated
++        assert pinned not in {t["function"]["name"] for t in base.tool_defs}  # controle
++
++        out = assemble_tool_defs(defs, context_length=200_000,
++                                 config=ToolSearchConfig.from_raw({"enabled": "on", "keep": [pinned]}))
++        by_name = {t["function"]["name"]: t for t in out.tool_defs}
++        assert out.activated
++        assert by_name[pinned] == defs[1]  # schema completo, intacto
++        assert by_name[pinned]["function"]["parameters"]["properties"] == {"q": {"type": "string"}}
++        assert not set(others) & set(by_name)
++        assert BRIDGE_TOOL_NAMES <= set(by_name)
++
++    def test_assemble_with_every_deferrable_pinned_does_not_activate(self):
++        """Tudo pinado → nada a esconder → sem bridge (enabled=on, sem conectores)."""
++        from tools.tool_search import ToolSearchConfig, assemble_tool_defs
++
++        self._register("keep_all_pinned", "keepallplugin")
++        defs = [_td("terminal", "Run"), _td("keep_all_pinned")]
++        out = assemble_tool_defs(defs, context_length=200_000,
++                                 config=ToolSearchConfig.from_raw({"enabled": "on", "keep": ["keep_all_pinned"]}))
++        assert not out.activated
++        assert {t["function"]["name"] for t in out.tool_defs} == {"terminal", "keep_all_pinned"}
++
++    def test_bridge_tool_call_of_kept_tool_is_refused_use_directly(self, monkeypatch):
++        """Derruba: resolve_underlying_call sem keep_tools (aceitaria a chamada pelo bridge)."""
++        from tools import tool_search
++        from tools.tool_search import ToolSearchConfig, resolve_underlying_call
++        from tools.tool_search_validation import not_deferrable_error
++
++        self._register("keep_call_pinned", "keepcallplugin")
++        self._register("keep_call_free", "keepcallplugin")
++        monkeypatch.setattr(
++            tool_search, "load_config_readonly",
++            lambda: ToolSearchConfig.from_raw({"keep": ["keep_call_pinned"]}),
++        )
++
++        name, args, err = resolve_underlying_call({"name": "keep_call_pinned", "arguments": {"q": "x"}})
++        assert (name, args) == (None, {})
++        assert err == not_deferrable_error("keep_call_pinned")
++        assert "Call it directly" in err
++
++        # controle: a nao-pinada do mesmo toolset continua passando pelo bridge
++        assert resolve_underlying_call({"name": "keep_call_free", "arguments": {"q": "x"}}) == (
++            "keep_call_free", {"q": "x"}, None)
++
++    def test_scoped_deferrable_names_excludes_kept(self, monkeypatch):
++        """Derruba: scoped_deferrable_names sem keep_tools (a pinada seria alcancavel pelo bridge)."""
++        from tools import tool_search
++        from tools.tool_search import ToolSearchConfig, scoped_deferrable_names
++
++        self._register("keep_scope_pinned", "keepscopeplugin")
++        self._register("keep_scope_free", "keepscopeplugin")
++        monkeypatch.setattr(
++            tool_search, "load_config_readonly",
++            lambda: ToolSearchConfig.from_raw({"keep": ["keep_scope_pinned"]}),
++        )
++        names = scoped_deferrable_names([_td("keep_scope_pinned"), _td("keep_scope_free")])
++        assert names == frozenset({"keep_scope_free"})
+diff --git a/tools/tool_search.py b/tools/tool_search.py
+index 4657a8e4..b810f522 100644
+--- a/tools/tool_search.py
++++ b/tools/tool_search.py
+@@ -52,6 +52,9 @@ class ToolSearchConfig:
+     listing_max_tokens: int = 4000  # budget = min(this, threshold_pct% of context)
+     # None = curated default; an explicit list replaces it wholesale ([] = defer no core tools).
+     defer_tools: Optional[frozenset] = None
++    # Never deferred, even plugin/MCP tools: an agent that only sees a tool through the bridge
++    # rarely reaches for it, so a tool the persona depends on can be pinned to the visible array.
++    keep_tools: frozenset = frozenset()
+ 
+     @property
+     def effective_defer_tools(self) -> frozenset:
+@@ -73,6 +76,7 @@ class ToolSearchConfig:
+                 "(e.g. [todo_list, computer_use]; [] keeps every tool eager) - "
+                 "using the curated default set.", defer_raw)
+             defer_raw = None
++        keep_raw = raw.get("keep")
+         return cls(
+             enabled=_tri_state(raw.get("enabled", "auto")),
+             threshold_pct=max(0.0, min(100.0, _safe_float(raw.get("threshold_pct"), 5.0))),
+@@ -82,7 +86,9 @@ class ToolSearchConfig:
+             listing=_tri_state(raw.get("listing", "auto")),
+             listing_max_tokens=_clamped_int(raw.get("listing_max_tokens"), 4000, 200, 60000),
+             defer_tools=(frozenset(str(n).strip() for n in defer_raw if str(n).strip())
+-                         if isinstance(defer_raw, (list, tuple, set)) else None))
++                         if isinstance(defer_raw, (list, tuple, set)) else None),
++            keep_tools=(frozenset(str(n).strip() for n in keep_raw if str(n).strip())
++                        if isinstance(keep_raw, (list, tuple, set)) else frozenset()))
+ 
+ 
+ _TRI_STATE_ALIASES = {"true": "on", "1": "on", "yes": "on", "false": "off", "0": "off", "no": "off"}
+@@ -147,11 +153,12 @@ _DIRECT_SURFACE_TOOLSETS = CLIENT_SURFACE_TOOLSETS | TOOLSET_SESSION_PLATFORMS.k
+ _DEFAULT_DEFERRED_TOOLS = frozenset(DEFAULT_CONFIG["tools"]["tool_search"]["defer"])
+ 
+ 
+-def is_deferrable_tool_name(name: str, defer_tools: Optional[frozenset] = None) -> bool:
++def is_deferrable_tool_name(name: str, defer_tools: Optional[frozenset] = None,
++                            keep_tools: frozenset = frozenset()) -> bool:
+     """True if a tool is *eligible* for deferral: named in ``defer_tools`` (curated set or
+     user override), OR an MCP tool, OR neither core nor a session-gated GUI surface (i.e. a
+-    plugin tool). Bridge names never defer."""
+-    if name in BRIDGE_TOOL_NAMES:
++    plugin tool). Bridge names and ``keep_tools`` never defer."""
++    if name in BRIDGE_TOOL_NAMES or name in keep_tools:
+         return False
+     if defer_tools is not None and name in defer_tools:
+         return True
+@@ -175,20 +182,21 @@ def session_tool_names(tool_defs: Iterable[dict[str, Any]]) -> frozenset[str]:
+ 
+ 
+ def classify_tools(tool_defs: list[dict[str, Any]], defer_tools: Optional[frozenset] = None,
+-                   ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
++                   keep_tools: frozenset = frozenset()) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+     """Split a tool-defs list into (visible, deferrable); bridge tools are dropped (re-added
+     after classification)."""
+     visible: list[dict[str, Any]] = []
+     deferrable: list[dict[str, Any]] = []
+     for td, name in zip(tool_defs, _tool_def_names(tool_defs)):
+         if name not in BRIDGE_TOOL_NAMES:
+-            (deferrable if is_deferrable_tool_name(name, defer_tools) else visible).append(td)
++            (deferrable if is_deferrable_tool_name(name, defer_tools, keep_tools) else visible).append(td)
+     return visible, deferrable
+ 
+ 
+ def _deferrable_in(tool_defs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+     """Deferrable subset of pre-assembly ``tool_defs`` under the read-only user config."""
+-    return classify_tools(tool_defs, load_config_readonly().effective_defer_tools)[1]
++    config = load_config_readonly()
++    return classify_tools(tool_defs, config.effective_defer_tools, config.keep_tools)[1]
+ 
+ 
+ def estimate_tokens_from_schemas(tool_defs: Iterable[dict[str, Any]]) -> int:
+@@ -348,7 +356,7 @@ def assemble_tool_defs(tool_defs: list[dict[str, Any]], *, context_length: Optio
+     config = config or load_config()
+     incoming = [td for td, name in zip(tool_defs, _tool_def_names(tool_defs))
+                 if name not in BRIDGE_TOOL_NAMES]
+-    visible, deferrable = classify_tools(incoming, config.effective_defer_tools)
++    visible, deferrable = classify_tools(incoming, config.effective_defer_tools, config.keep_tools)
+     connections_granted = connections_in_scope(incoming)
+     if not deferrable:
+         if should_activate(config, 0, context_length, connections_granted=connections_granted):
+@@ -526,7 +534,7 @@ def dispatch_tool_describe(args: dict[str, Any], *, current_tool_defs: list[dict
+             # A core tool absent here, deferred or not: tool_search cannot surface it.
+             errors[name] = unavailable
+         elif _registry_entry(name) is not None and not is_deferrable_tool_name(
+-            name, load_config_readonly().effective_defer_tools):
++            name, config.effective_defer_tools, config.keep_tools):
+             # Registered but bridge/core/GUI-surface: a real name, wrong door.
+             errors[name] = not_deferrable_error(name, session_names)
+         else:
+@@ -546,9 +554,9 @@ def scoped_deferrable_names(tool_defs: list[dict[str, Any]]) -> frozenset[str]:
+     """Deferrable names in the *pre-assembly* ``tool_defs`` of the session scope — the
+     universe ``tool_call`` may reach. Gates bridge dispatch AND the executor unwrap so a
+     restricted session cannot invoke an out-of-scope tool via the bridge."""
+-    defer_tools = load_config_readonly().effective_defer_tools
++    config = load_config_readonly()
+     return frozenset(n for n in _tool_def_names(tool_defs)
+-                     if n and is_deferrable_tool_name(n, defer_tools))
++                     if n and is_deferrable_tool_name(n, config.effective_defer_tools, config.keep_tools))
+ 
+ 
+ def out_of_scope_reason(name: str) -> Optional[str]:
+@@ -611,7 +619,8 @@ def resolve_underlying_call(args: dict[str, Any], session_tool_names: Optional[I
+     unavailable = session_unavailable_error(name, session_tool_names)
+     if unavailable:
+         return None, {}, unavailable
+-    if not is_deferrable_tool_name(name, load_config_readonly().effective_defer_tools):
++    config = load_config_readonly()
++    if not is_deferrable_tool_name(name, config.effective_defer_tools, config.keep_tools):
+         return None, {}, not_deferrable_error(name, session_tool_names)
+     return name, raw_args, None
+ 
